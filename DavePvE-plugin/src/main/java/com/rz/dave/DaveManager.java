@@ -1,4 +1,9 @@
 package com.rz.dave;
+import com.rz.dave.team.TeamChestManager;
+import com.rz.dave.pvz.PvzMode;
+import com.rz.dave.shop.ShopItem;
+import com.rz.dave.shop.ShopCurrency;
+import com.rz.dave.menu.EquipmentCatalog;
 
 import com.google.common.collect.Multimap;
 import net.kyori.adventure.text.Component;
@@ -6227,7 +6232,7 @@ public final class DaveManager {
         }
     }
 
-    boolean isSummonPoint(Entity entity) {
+    public boolean isSummonPoint(Entity entity) {
         return entity.getScoreboardTags().contains("rz")
                 && entity.getScoreboardTags().contains("summon_point");
     }

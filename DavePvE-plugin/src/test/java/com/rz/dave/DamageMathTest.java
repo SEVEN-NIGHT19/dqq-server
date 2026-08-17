@@ -1,4 +1,8 @@
 package com.rz.dave;
+import com.rz.dave.DamageMath;
+import com.rz.dave.DaveManager;
+import com.rz.dave.menu.EquipmentCatalog;
+import com.rz.dave.shop.ShopCurrency;
 
 import org.junit.jupiter.api.Test;
 import org.bukkit.enchantments.Enchantment;

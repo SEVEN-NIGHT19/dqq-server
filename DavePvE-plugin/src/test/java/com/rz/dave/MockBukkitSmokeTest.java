@@ -1,4 +1,6 @@
 package com.rz.dave;
+import com.rz.dave.DaveManager;
+import com.rz.dave.DavePvEPlugin;
 
 import org.mockbukkit.mockbukkit.MockBukkit;
 import org.mockbukkit.mockbukkit.ServerMock;

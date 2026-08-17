@@ -1,4 +1,5 @@
 package com.rz.dave;
+import com.rz.dave.menu.EquipmentCatalog;
 
 import org.junit.jupiter.api.Test;
 

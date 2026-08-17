@@ -1,4 +1,8 @@
 package com.rz.dave;
+import com.rz.dave.shop.ShopCatalog;
+import com.rz.dave.shop.ShopItem;
+import com.rz.dave.shop.ShopCategory;
+import com.rz.dave.shop.ShopCurrency;
 
 import org.mockbukkit.mockbukkit.MockBukkit;
 import org.mockbukkit.mockbukkit.ServerMock;

@@ -1,4 +1,7 @@
 package com.rz.dave;
+import com.rz.dave.pvz.PvzMode;
+import com.rz.dave.pvz.PvzLane;
+import com.rz.dave.pvz.PvzClass;
 
 import org.bukkit.Location;
 import org.bukkit.Material;

@@ -1,4 +1,5 @@
 package com.rz.dave;
+import com.rz.dave.shop.ShopCurrency;
 
 import java.util.HashMap;
 import java.util.Map;
