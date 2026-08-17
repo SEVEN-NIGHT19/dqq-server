@@ -1,0 +1,41 @@
+package com.rz.dave;
+
+import org.bukkit.plugin.java.JavaPlugin;
+
+public final class DavePvEPlugin extends JavaPlugin {
+    private DaveManager manager;
+
+    @Override
+    public void onEnable() {
+        manager = new DaveManager(this);
+        manager.enable();
+        getServer().getPluginManager().registerEvents(new GameListener(manager), this);
+        if (manager.pvzMode() != null) {
+            getServer().getPluginManager().registerEvents(new PvzListener(manager.pvzMode()), this);
+        }
+        if (getCommand("davepve") != null) {
+            DaveAdminCommand adminCommand = new DaveAdminCommand(manager);
+            getCommand("davepve").setExecutor(adminCommand);
+            getCommand("davepve").setTabCompleter(adminCommand);
+        }
+        if (getCommand("cf") != null) {
+            getCommand("cf").setExecutor(new PlayerMenuCommand(manager));
+        }
+        if (getCommand("cv") != null) {
+            getCommand("cv").setExecutor(new OpMenuCommand(manager));
+        }
+        if (getCommand("lb") != null) {
+            getCommand("lb").setExecutor(new LobbyCommand(manager));
+        }
+        getLogger().info("DavePvE enabled");
+    }
+
+    @Override
+    public void onDisable() {
+        if (manager != null) {
+            manager.disable();
+            manager = null;
+        }
+        getLogger().info("DavePvE disabled");
+    }
+}

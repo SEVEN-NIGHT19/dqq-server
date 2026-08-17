@@ -1,0 +1,2 @@
+# 生成小型破碎者跳跳实体
+summon minecraft:slime ~ ~ ~ {equipment:{feet:{id: "minecraft:iron_boots", count: 1},legs:{id: "minecraft:iron_leggings", count: 1},chest:{id: "minecraft:iron_chestplate", count: 1},head:{id: "minecraft:iron_helmet", count: 1, components: {unbreakable:{}}}},drop_chances:{feet:0f,legs:0f,chest:0f,head:0f},Tags: ["rz", "monster", "small_slime"], Size: 1, Health: 1f, attributes: [{id:"minecraft:max_health",base:1d}, {id:"minecraft:jump_strength",base:0.72d}, {id:"minecraft:safe_fall_distance",base:6d}], DeathLootTable: "rz:coin", CustomName:{text:"小型破碎者跳跳"}}

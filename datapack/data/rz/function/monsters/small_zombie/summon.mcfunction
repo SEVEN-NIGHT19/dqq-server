@@ -1,0 +1,2 @@
+# 生成小僵尸实体（同时作为巨人抛出的投掷小僵尸）
+summon minecraft:zombie ~ ~ ~ {equipment:{head:{id: "minecraft:stone_button", count: 1}},drop_chances:{feet:0f,legs:0f,chest:0f,head:0f},Tags: ["rz", "monster", "normal_little_zombie"], IsBaby: 1b, CanPickUpLoot: 0b, Health: 15f, DeathLootTable: "rz:coin", CustomName:{text:"小僵尸"}}

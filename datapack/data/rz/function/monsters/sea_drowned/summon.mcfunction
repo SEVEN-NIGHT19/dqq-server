@@ -1,0 +1,2 @@
+# 生成海洋使徒实体（手持三叉戟）
+summon minecraft:drowned ~ ~ ~ {equipment:{head:{id: "minecraft:stone_button", count: 1},offhand:{id: "minecraft:trident", count: 1}},drop_chances:{feet:0f,legs:0f,chest:0f,head:0f,mainhand:0f,offhand:0f},Tags: ["rz", "monster", "sea_drowned"], IsBaby: 0b, CanPickUpLoot: 0b, DeathLootTable: "rz:gold_coin", CustomName:{text:"海洋使徒"},Health: 40f,attributes:[{id:"minecraft:max_health",base:40d}]}

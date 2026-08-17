@@ -1,0 +1,25 @@
+{
+    "pools": [
+        {
+            "rolls": 1,
+            "entries": [
+                {
+                    "type": "minecraft:item",
+                    "name": "minecraft:wheat",
+                    "functions": [
+                        {
+                            "function": "set_name",
+                            "name": "狂暴巨人僵尸",
+                            "target": "item_name",
+                            "entity": "this"
+                        },
+                        {
+                            "function": "set_custom_data",
+                            "tag": "{rz: 1b, summon: 1b, id: 34}"
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

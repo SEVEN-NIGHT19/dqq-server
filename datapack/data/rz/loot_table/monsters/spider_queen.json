@@ -1,0 +1,25 @@
+{
+    "pools": [
+        {
+            "rolls": 1,
+            "entries": [
+                {
+                    "type": "minecraft:item",
+                    "name": "minecraft:wheat",
+                    "functions": [
+                        {
+                            "function": "set_name",
+                            "name": "蜘蛛女王",
+                            "target": "item_name",
+                            "entity": "this"
+                        },
+                        {
+                            "function": "set_custom_data",
+                            "tag": "{rz: 1b, summon: 1b, id: 26}"
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

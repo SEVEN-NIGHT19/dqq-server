@@ -1,0 +1,2 @@
+# 生成普通小蜘蛛实体
+summon minecraft:spider ~ ~ ~ {Tags: ["rz", "monster", "spider_ling_normal"], DeathLootTable:"", CustomName:{text:"小蜘蛛"},Health: 7f,attributes: [{id:"minecraft:max_health",base:7d},{id:"minecraft:scale",base:0.6d}]}

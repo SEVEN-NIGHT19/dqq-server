@@ -1,0 +1,25 @@
+{
+    "pools": [
+        {
+            "rolls": 1,
+            "entries": [
+                {
+                    "type": "minecraft:loot_table",
+                    "value": "rz:coin"
+                }
+            ]
+        },
+		{
+			"rolls": {
+				"max": 4,
+				"min": 2
+			},
+			"entries": [
+				{
+					"type": "minecraft:loot_table",
+					"value": "rz:monsters/medium_magma_cube"
+				}
+			]
+		}
+    ]
+}

@@ -1,0 +1,4 @@
+# 生成撑杆溺尸实体（手持三叉戟）
+summon minecraft:zombie ~ ~ ~ {equipment:{chest:{id: "minecraft:leather_chestplate", count: 1, components: {dyed_color:1481884}},head:{id: "minecraft:mangrove_leaves"},offhand:{id: "minecraft:trident", count: 1}},drop_chances:{feet:0f,legs:0f,chest:0f,head:0f,mainhand:0f,offhand:0f},Tags: ["rz", "monster", "drowned"], IsBaby: 0b, CanPickUpLoot: 0b, Health: 25f, attributes: [{id:"minecraft:max_health",base:25d}, {id:"minecraft:movement_speed",base:0.3d}, {id:"minecraft:attack_damage",base:0d}], DeathLootTable: "rz:coin", CustomName:{text:"撑杆溺尸"}}
+
+execute as @e[tag=rz,tag=drowned,sort=nearest,limit=1] at @s facing entity @e[tag=player,sort=nearest,limit=1] eyes run tp @s ~ ~ ~ ~ ~

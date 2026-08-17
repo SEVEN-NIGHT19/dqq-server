@@ -1,0 +1,2 @@
+# 生成中型地狱破碎者实体
+summon minecraft:magma_cube ~ ~ ~ {Tags: ["rz", "monster", "medium_magma_cube"], Size: 1, Health: 4f, attributes: [{id:"minecraft:scale",base:2d}, {id:"minecraft:max_health",base:4d}, {id:"minecraft:jump_strength",base:0.72d}, {id:"minecraft:safe_fall_distance",base:6d}], DeathLootTable: "rz:magma_cube/medium", CustomName:{text:"中型地狱破碎者"}}

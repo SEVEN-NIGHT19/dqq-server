@@ -1,0 +1,2 @@
+# 生成蜘蛛女王实体
+summon minecraft:spider ~ ~ ~ {Tags: ["rz", "monster", "spider_queen"],attributes: [{id:"minecraft:max_health",base:30d},{id:"minecraft:scale",base:1.5d},{id:"minecraft:follow_range",base:0d}],DeathLootTable:"rz:gold_coin",Health:40f, CustomName:{text:"蜘蛛女王"}}

@@ -1,0 +1,30 @@
+{
+    "pools": [
+        {
+            "rolls": {
+                "max": 1,
+                "min": 1
+            },
+            "entries": [
+                {
+                    "type": "minecraft:item",
+                    "name": "minecraft:iron_nugget",
+                    "functions": [
+                        {
+                            "function": "set_name",
+                            "name": "银币",
+                            "target": "item_name",
+                            "entity": "this"
+                        }
+                    ]
+                }
+            ],
+            "conditions": [
+                {
+                    "condition": "random_chance",
+                    "chance": 0.2
+                }
+            ]
+        }
+    ]
+}

@@ -1,0 +1,2 @@
+# 生成伴舞骷髅实体（装备与属性）
+summon minecraft:skeleton ~ ~ ~ {equipment:{chest:{id: "minecraft:leather_chestplate", count: 1, components: {dyed_color:3847130}},head:{id: "minecraft:leather_helmet", count: 1, components: {unbreakable:{}, dyed_color:16701501}}},drop_chances:{feet:0f,legs:0f,chest:0f,head:0f},Tags: ["rz", "monster", "backup_dancer_skeleton"], CanPickUpLoot: 0b, attributes: [{id:"minecraft:movement_speed",base:0.3d}], DeathLootTable: "rz:backup_dancer_coin", CustomName:{text:"伴舞骷髅"}}

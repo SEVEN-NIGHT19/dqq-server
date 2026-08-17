@@ -1,0 +1,2 @@
+# 生成剧毒小蜘蛛实体
+summon minecraft:cave_spider ~ ~ ~ {Tags: ["rz", "monster", "spider_ling_poison"], DeathLootTable:"", CustomName:{text:"小蜘蛛·毒"},Health: 7f,attributes: [{id:"minecraft:max_health",base:7d},{id:"minecraft:scale",base:0.8d}]}

@@ -1,0 +1,2 @@
+# 生成小型地狱破碎者实体
+summon minecraft:magma_cube ~ ~ ~ {Tags: ["rz", "monster", "small_magma_cube"], Size: 1, Health: 1f, attributes: [{id:"minecraft:max_health",base:1d}, {id:"minecraft:jump_strength",base:0.72d}, {id:"minecraft:safe_fall_distance",base:6d}], DeathLootTable: "rz:coin", CustomName:{text:"小型地狱破碎者"}}

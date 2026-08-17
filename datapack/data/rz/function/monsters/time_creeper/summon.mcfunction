@@ -1,0 +1,2 @@
+# 生成定时苦力怕实体
+summon minecraft:creeper ~ ~ ~ {Tags: ["rz", "monster", "time_creeper"], powered: 1b, NoAI: 1b, Health: 30f, attributes: [{id:"minecraft:max_health",base:30d}], DeathLootTable: "rz:gold_coin", CustomName:{text:"定时苦力怕"}}

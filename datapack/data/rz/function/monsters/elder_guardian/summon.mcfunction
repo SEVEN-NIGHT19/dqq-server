@@ -1,0 +1,2 @@
+# 生成远古守卫者实体
+summon minecraft:elder_guardian ~ ~ ~ {Tags: ["rz", "monster", "elder_guardian"],DeathLootTable: "rz:diamond_coin", CustomName:{text:"远古守卫者"},attributes:[{id:"minecraft:movement_speed",base:0d}]}

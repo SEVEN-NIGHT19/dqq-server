@@ -1,0 +1,172 @@
+{
+	"random_zombie": {
+		"name": "随机僵尸",
+		"id": 0,
+		"weight": 2
+	},
+	"normal_zombie": {
+		"name": "普通僵尸",
+		"id": 1,
+		"weight": 4
+	},
+	"iron_armor_zombie": {
+		"name": "铁甲僵尸",
+		"id": 2,
+		"weight": 4
+	},
+	"small_zombie": {
+		"name": "小僵尸",
+		"id": 3,
+		"weight": 4
+	},
+	"drowned": {
+		"name": "溺尸",
+		"id": 4,
+		"weight": 4
+	},
+	"creeper": {
+		"name": "苦力怕",
+		"id": 5,
+		"weight": 4
+	},
+	"skeleton": {
+		"name": "骷髅",
+		"id": 6,
+		"weight": 4
+	},
+	"stray": {
+		"name": "流浪者",
+		"id": 7,
+		"weight": 3
+	},
+	"time_creeper": {
+		"name": "定时苦力怕",
+		"id": 8,
+		"weight": 3
+	},
+	"lf_dispenser_zombie": {
+		"name": "低频发射器僵尸",
+		"id": 9,
+		"weight": 2
+	},
+	"mf_dispenser_zombie": {
+		"name": "中频发射器僵尸",
+		"id": 10,
+		"weight": 2
+	},
+	"hf_dispenser_zombie": {
+		"name": "高频发射器僵尸",
+		"id": 11,
+		"weight": 2
+	},
+	"newspaper_zombie": {
+		"name": "读报僵尸",
+		"id": 12,
+		"weight": 2
+	},
+	"football_skeleton": {
+		"name": "橄榄球骷髅",
+		"id": 13,
+		"weight": 4
+	},
+	"black_football_skeleton": {
+		"name": "黑橄榄骷髅",
+		"id": 14,
+		"weight": 2
+	},
+	"dancing_zombie": {
+		"name": "舞王僵尸",
+		"id": 15,
+		"weight": 3
+	},
+	"backup_dancer_skeleton": {
+		"name": "伴舞僵尸",
+		"id": 16,
+		"weight": 3
+	},
+	"giant": {
+		"name": "巨人僵尸",
+		"id": 17,
+		"weight": 1
+	},
+	"blaze": {
+		"name": "烈焰人气球",
+		"id": 18,
+		"weight": 3
+	},
+	"small_slime": {
+		"name": "小型破碎者",
+		"id": 19,
+		"weight": 0
+	},
+	"medium_slime": {
+		"name": "中型破碎者",
+		"id": 20,
+		"weight": 0
+	},
+	"large_slime": {
+		"name": "大型破碎者",
+		"id": 21,
+		"weight": 1
+	},
+	"spider": {
+		"name": "蜘蛛",
+		"id": 22,
+		"weight": 2
+	},
+	"small_magma_cube": {
+		"name": "小型岩浆怪",
+		"id": 23,
+		"weight": 0
+	},
+	"medium_magma_cube": {
+		"name": "中型岩浆怪",
+		"id": 24,
+		"weight": 0
+	},
+	"large_magma_cube": {
+		"name": "大型岩浆怪",
+		"id": 25,
+		"weight": 1
+	},
+	"spider_queen": {
+		"name": "蜘蛛女王",
+		"id": 26,
+		"weight": 1
+	},
+	"spider_egg": {
+		"name": "蜘蛛蛋",
+		"id": 27,
+		"weight": 0
+	},
+	"spider_ling_normal": {
+		"name": "普通小蜘蛛",
+		"id": 28,
+		"weight": 0
+	},
+	"spider_ling_poison": {
+		"name": "剧毒小蜘蛛",
+		"id": 29,
+		"weight": 0
+	},
+	"guardian": {
+		"name": "守卫者",
+		"id": 30,
+		"weight": 0
+	},
+	"elder_guardian": {
+		"name": "远古守卫者",
+		"id": 31,
+		"weight": 0
+	},
+	"sea_drowned": {
+		"name": "海洋使徒",
+		"id": 32,
+		"weight": 1
+	},
+	"witch": {
+		"name": "女巫",
+		"id": 33,
+		"weight": 2
+	}
+}

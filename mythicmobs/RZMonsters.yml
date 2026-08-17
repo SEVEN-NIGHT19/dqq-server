@@ -1,0 +1,126 @@
+# 斗蛐蛐 PvE - 试点迁移怪物（MythicMobs 5.x）
+# 由 DavePvE 插件通过 MythicMobs API 生成并打上 rz/monster 标签；
+# 货币与专属掉落由插件统一发放，此处不配置 Drops，避免 item_name 格式不一致。
+
+RZNormalZombie:
+  Type: ZOMBIE
+  Display: '普通僵尸'
+  Health: 20
+  Options:
+    PreventSunburn: true
+    PreventOtherDrops: true
+    PreventRandomEquipment: true
+    PreventItemPickup: true
+    Despawn: PERSIST
+  Equipment:
+    - STONE_BUTTON HEAD:0
+
+RZIronArmorZombie:
+  Type: ZOMBIE
+  Display: '铁甲僵尸'
+  Health: 20
+  Options:
+    PreventSunburn: true
+    PreventOtherDrops: true
+    PreventRandomEquipment: true
+    PreventItemPickup: true
+    Despawn: PERSIST
+  Equipment:
+    - IRON_HELMET HEAD:0
+    - IRON_CHESTPLATE CHEST:0
+    - IRON_LEGGINGS LEGS:0
+    - IRON_BOOTS FEET:0
+
+RZSmallZombie:
+  Type: ZOMBIE
+  Display: '小僵尸'
+  Health: 15
+  Options:
+    Baby: true
+    PreventSunburn: true
+    PreventOtherDrops: true
+    PreventRandomEquipment: true
+    PreventItemPickup: true
+    Despawn: PERSIST
+  Equipment:
+    - STONE_BUTTON HEAD:0
+
+RZSkeleton:
+  Type: SKELETON
+  Display: '骷髅'
+  Health: 20
+  Options:
+    PreventSunburn: true
+    PreventOtherDrops: true
+    PreventRandomEquipment: true
+    PreventItemPickup: true
+    Despawn: PERSIST
+  Equipment:
+    - STONE_BUTTON HEAD:0
+    - BOW HAND:0
+
+RZStray:
+  Type: STRAY
+  Display: '流浪者'
+  Health: 20
+  Options:
+    PreventSunburn: true
+    PreventOtherDrops: true
+    PreventRandomEquipment: true
+    PreventItemPickup: true
+    Despawn: PERSIST
+  Equipment:
+    - STONE_BUTTON HEAD:0
+    - BOW HAND:0
+
+RZCreeper:
+  Type: CREEPER
+  Display: '苦力怕'
+  Health: 20
+  Options:
+    PreventOtherDrops: true
+    PreventRandomEquipment: true
+    PreventItemPickup: true
+    Despawn: PERSIST
+
+RZBlaze:
+  Type: BLAZE
+  Display: '气球烈焰人'
+  Health: 20
+  Options:
+    PreventOtherDrops: true
+    PreventRandomEquipment: true
+    PreventItemPickup: true
+    Despawn: PERSIST
+  Equipment:
+    - IRON_HELMET HEAD:0
+    - IRON_CHESTPLATE CHEST:0
+    - IRON_LEGGINGS LEGS:0
+    - IRON_BOOTS FEET:0
+
+RZLargeSlime:
+  Type: SLIME
+  Display: '大型破碎者跳跳'
+  Health: 25
+  Options:
+    Size: 3
+    PreventSlimeSplit: true
+    PreventOtherDrops: true
+    PreventRandomEquipment: true
+    PreventItemPickup: true
+    Despawn: PERSIST
+  Equipment:
+    - IRON_HELMET HEAD:0
+    - IRON_CHESTPLATE CHEST:0
+    - IRON_LEGGINGS LEGS:0
+    - IRON_BOOTS FEET:0
+
+RZWitch:
+  Type: WITCH
+  Display: '女巫'
+  Health: 26
+  Options:
+    PreventOtherDrops: true
+    PreventRandomEquipment: true
+    PreventItemPickup: true
+    Despawn: PERSIST

@@ -1,0 +1,20 @@
+# 构建产物
+build/
+out/
+*.class
+*.jar
+
+# 本地测试/服务器敏感文件
+**/server.properties
+**/rcon.py
+**/rcon-cmd.mjs
+**/mcsm_api.py
+*.log
+logs/
+
+# IDE / 系统
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db

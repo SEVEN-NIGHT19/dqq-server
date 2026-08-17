@@ -1,0 +1,24 @@
+name: DavePvE
+version: 6.0.0
+main: com.rz.dave.DavePvEPlugin
+api-version: 1.21
+description: 多队 PvE 系统：准备/分队/戴夫生成/商店/团队箱子/淘汰与胜负管理；新增植物大战僵尸（PVZ）独立模式
+authors: [Codex]
+commands:
+  davepve:
+    description: 戴夫 PvE 命令（ready/unready 所有玩家，其余仅管理员；pvz 为 PVZ 模式管理）
+    usage: /davepve ready|unready | /davepve balance|start|bind|kill|info|pvz
+  cf:
+    description: 打开玩家命令菜单
+    usage: /cf
+  cv:
+    description: 打开管理命令菜单（仅管理员）
+    usage: /cv
+    permission: davepve.admin
+  lb:
+    description: 返回大厅
+    usage: /lb
+permissions:
+  davepve.admin:
+    description: 允许使用 davepve 管理命令
+    default: op
