@@ -31,8 +31,8 @@ public final class PlayerMenu implements InventoryHolder {
                 "进入正常模式界面，准备并投票"));
         inventory.setItem(MODE_DEATH_SLOT, button(Material.RED_WOOL, "死战模式选择",
                 "进入死战模式界面，准备并投票经济局"));
-        inventory.setItem(MODE_PVZ_SLOT, button(Material.GOLDEN_CARROT, "植物大战僵尸模式",
-                "进入 PVZ 模式界面，开局随机职业，守路到最后获胜"));
+        inventory.setItem(MODE_PVZ_SLOT, button(Material.GOLDEN_CARROT, "随机植物对战随机僵尸",
+                "开局随机职业、随机分路（五条数字路），守路到最后获胜"));
         boolean spectator = player.getGameMode() == GameMode.SPECTATOR;
         inventory.setItem(SPECTATE_SLOT, button(spectator ? Material.ENDER_EYE : Material.SPYGLASS,
                 spectator ? "退出旁观" : "旁观",

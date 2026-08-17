@@ -71,7 +71,7 @@ class PvzModeTest {
 
     @Test
     void laneHitBaseDecrementsAndEliminatesAtZero() {
-        PvzLane lane = new PvzLane("red", "红队", 10);
+        PvzLane lane = new PvzLane("one", "1路", 10);
         lane.setSpawn(loc(0, 0, 0));
         lane.setBase(loc(10, 0, 0));
         lane.setPlayerSpawn(loc(5, 0, 0));
@@ -87,7 +87,7 @@ class PvzModeTest {
 
     @Test
     void laneInactiveWithoutAlivePlayersOrWhenEliminated() {
-        PvzLane lane = new PvzLane("blue", "蓝队", 10);
+        PvzLane lane = new PvzLane("two", "2路", 10);
         lane.setAlivePlayers(2);
         assertTrue(lane.isActive());
         lane.setAlivePlayers(0);
@@ -99,7 +99,7 @@ class PvzModeTest {
 
     @Test
     void laneResetRestoresFullHealthAndState() {
-        PvzLane lane = new PvzLane("green", "绿队", 10);
+        PvzLane lane = new PvzLane("three", "3路", 10);
         lane.setAlivePlayers(3);
         lane.hitBase();
         lane.hitBase();

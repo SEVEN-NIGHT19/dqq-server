@@ -28,9 +28,9 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * PVZ 模式双路流程集成测试（MockBukkit）：
- * 配置场地 → 两名模拟玩家准备 → 开局（随机职业/发装备/传送/分路）
- * → 一路全灭 → 另一路获胜。
+ * PVZ 模式多路流程集成测试（MockBukkit）：
+ * 配置五条数字路 → 模拟玩家准备 → 开局（随机职业/发装备/传送/随机分路）
+ * → 淘汰若干路 → 判定获胜路。
  */
 class PvzModeFlowTest {
 
@@ -47,8 +47,8 @@ class PvzModeFlowTest {
         manager = new DaveManager(plugin);
         pvz = new PvzMode(plugin, manager);
         pvz.enable();
-        // 配置全部 4 条路（world 世界，测试坐标）
-        for (String id : DaveManager.TEAM_IDS) {
+        // 配置全部 5 条数字路（world 世界，测试坐标）
+        for (String id : PvzMode.LANE_IDS) {
             pvz.setLaneSpawn(id, "world", 1, 1, 33);
             pvz.setLaneBase(id, "world", 21, 1, 33);
             pvz.setLanePlayerSpawn(id, "world", 11, 1, 33);
@@ -94,23 +94,22 @@ class PvzModeFlowTest {
     void startGameAssignsClassesAndLanes() {
         PlayerMock red = server.addPlayer("RedPlayer");
         PlayerMock blue = server.addPlayer("BluePlayer");
-        manager.setTeamPreference(red, "red");
-        manager.setTeamPreference(blue, "blue");
         pvz.setReady(red, true);
         pvz.setReady(blue, true);
 
         pvz.startGame(server.getConsoleSender());
 
         assertTrue(pvz.isRunning());
-        assertEquals("red", pvz.laneOf(red));
-        assertEquals("blue", pvz.laneOf(blue));
+        // 随机分路：人少的路优先，两人依次分到 1路、2路
+        assertEquals("one", pvz.laneOf(red));
+        assertEquals("two", pvz.laneOf(blue));
         assertNotNull(pvz.classOf(red));
         assertNotNull(pvz.classOf(blue));
         assertTrue(pvz.isPlaying(red));
         assertTrue(pvz.isPlaying(blue));
         String status = pvz.statusSummary();
-        assertTrue(status.contains("红队") && status.contains("存活玩家 1"), status);
-        assertTrue(status.contains("蓝队") && status.contains("存活玩家 1"), status);
+        assertTrue(status.contains("1路") && status.contains("存活玩家 1"), status);
+        assertTrue(status.contains("2路") && status.contains("存活玩家 1"), status);
         // 职业装备已发放
         assertTrue(red.getInventory().contains(org.bukkit.Material.IRON_SWORD)
                 || red.getInventory().contains(org.bukkit.Material.BOW));
@@ -121,36 +120,35 @@ class PvzModeFlowTest {
         PlayerMock red1 = server.addPlayer("RedOne");
         PlayerMock red2 = server.addPlayer("RedTwo");
         PlayerMock blue1 = server.addPlayer("BlueOne");
-        manager.setTeamPreference(red1, "red");
-        manager.setTeamPreference(red2, "red");
-        manager.setTeamPreference(blue1, "blue");
         pvz.setReady(red1, true);
         pvz.setReady(red2, true);
         pvz.setReady(blue1, true);
         pvz.startGame(server.getConsoleSender());
         assertTrue(pvz.isRunning());
+        assertEquals("one", pvz.laneOf(red1));
+        assertEquals("two", pvz.laneOf(red2));
+        assertEquals("three", pvz.laneOf(blue1));
 
-        // 红队两人阵亡 → 红队淘汰 → 蓝队获胜
+        // 1路、2路各一人阵亡 → 两路淘汰 → 3路获胜
         pvz.onPlayerDeath(red1);
-        assertTrue(pvz.isRunning(), "红队还有 1 人存活，不应结束");
+        assertTrue(pvz.isRunning(), "1路淘汰后还有 2路/3路，不应结束");
         pvz.onPlayerDeath(red2);
         assertFalse(pvz.isRunning());
-        assertEquals("blue", pvz.lastWinner());
+        assertEquals("three", pvz.lastWinner());
     }
 
     @Test
     void singleLaneStartRunsUntilTheOnlyLaneIsEliminated() {
         PlayerMock solo = server.addPlayer("Solo");
-        manager.setTeamPreference(solo, "green");
         pvz.setReady(solo, true);
 
         pvz.startGame(server.getConsoleSender());
 
-        assertTrue(pvz.isRunning(), "单队开局应进入生存局");
-        assertEquals("green", pvz.laneOf(solo));
+        assertTrue(pvz.isRunning(), "仅一路开局应进入生存局");
+        assertEquals("one", pvz.laneOf(solo));
         assertTrue(pvz.isPlaying(solo));
         pvz.onPlayerDeath(solo);
-        assertFalse(pvz.isRunning(), "唯一队伍全灭后才应结束");
+        assertFalse(pvz.isRunning(), "唯一路全员阵亡后才应结束");
         assertEquals(0, pvz.readyCount(), "准备状态应被清空");
     }
 
@@ -158,8 +156,6 @@ class PvzModeFlowTest {
     void pvzMonsterCannotTargetPlayerFromAnotherLane() {
         PlayerMock red = server.addPlayer("RedTarget");
         PlayerMock blue = server.addPlayer("BlueTarget");
-        manager.setTeamPreference(red, "red");
-        manager.setTeamPreference(blue, "blue");
         pvz.setReady(red, true);
         pvz.setReady(blue, true);
         pvz.startGame(server.getConsoleSender());
@@ -169,20 +165,18 @@ class PvzModeFlowTest {
         monster.getPersistentDataContainer().set(
                 new NamespacedKey(plugin, "pvz_lane"),
                 PersistentDataType.STRING,
-                "red");
+                "one");
 
         EntityTargetEvent event = new EntityTargetEvent(monster, blue, EntityTargetEvent.TargetReason.CUSTOM);
         new PvzListener(pvz).onTarget(event);
 
-        assertTrue(event.isCancelled(), "红路怪物不得索敌蓝路玩家");
+        assertTrue(event.isCancelled(), "1路怪物不得索敌其他路的玩家");
     }
 
     @Test
     void pvzMonsterCannotTargetSpectator() {
         PlayerMock red = server.addPlayer("RedAlive");
         PlayerMock blue = server.addPlayer("BlueDead");
-        manager.setTeamPreference(red, "red");
-        manager.setTeamPreference(blue, "blue");
         pvz.setReady(red, true);
         pvz.setReady(blue, true);
         pvz.startGame(server.getConsoleSender());
@@ -193,7 +187,7 @@ class PvzModeFlowTest {
         monster.getPersistentDataContainer().set(
                 new NamespacedKey(plugin, "pvz_lane"),
                 PersistentDataType.STRING,
-                "red");
+                "one");
 
         EntityTargetEvent event = new EntityTargetEvent(monster, blue, EntityTargetEvent.TargetReason.CUSTOM);
         new PvzListener(pvz).onTarget(event);
@@ -204,7 +198,6 @@ class PvzModeFlowTest {
     @Test
     void pvzPlayerCannotPickupOrSwapItems() {
         PlayerMock player = server.addPlayer("PvzItems");
-        manager.setTeamPreference(player, "red");
         pvz.setReady(player, true);
         pvz.startGame(server.getConsoleSender());
         PvzListener listener = new PvzListener(pvz);
@@ -224,7 +217,6 @@ class PvzModeFlowTest {
     void crossModeDamageIsCancelled() {
         PlayerMock pvzPlayer = server.addPlayer("PvzCombatant");
         PlayerMock classicPlayer = server.addPlayer("ClassicCombatant");
-        manager.setTeamPreference(pvzPlayer, "red");
         pvz.setReady(pvzPlayer, true);
         pvz.startGame(server.getConsoleSender());
         PvzListener listener = new PvzListener(pvz);
@@ -234,7 +226,7 @@ class PvzModeFlowTest {
         pvzMonster.getPersistentDataContainer().set(
                 new NamespacedKey(plugin, "pvz_lane"),
                 PersistentDataType.STRING,
-                "red");
+                "one");
         EntityDamageByEntityEvent classicHitsPvzMonster = new EntityDamageByEntityEvent(
                 classicPlayer, pvzMonster, EntityDamageEvent.DamageCause.ENTITY_ATTACK, 1.0);
         listener.onDamage(classicHitsPvzMonster);

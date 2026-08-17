@@ -147,7 +147,7 @@ public final class DaveAdminCommand implements CommandExecutor, TabCompleter {
                 }
                 if (args.length < 2) {
                     sender.sendMessage(org.bukkit.ChatColor.GOLD
-                            + "用法: /davepve pvz start|stop|status|setspawn|setbase|setplayer <队伍>");
+                            + "用法: /davepve pvz start|stop|status|setspawn|setbase|setplayer <one|two|three|four|five>");
                     return true;
                 }
                 String action = args[1].toLowerCase();
@@ -166,7 +166,7 @@ public final class DaveAdminCommand implements CommandExecutor, TabCompleter {
                     case "setplayer": {
                         if (args.length < 3) {
                             sender.sendMessage(org.bukkit.ChatColor.GOLD
-                                    + "用法: /davepve pvz " + action + " <red|blue|yellow|green> [x y z]");
+                                    + "用法: /davepve pvz " + action + " <one|two|three|four|five> [x y z]");
                             return true;
                         }
                         String team = args[2];
@@ -245,11 +245,7 @@ public final class DaveAdminCommand implements CommandExecutor, TabCompleter {
         if (args.length == 3 && (args[1].equalsIgnoreCase("setspawn")
                 || args[1].equalsIgnoreCase("setbase")
                 || args[1].equalsIgnoreCase("setplayer"))) {
-            List<String> teams = new ArrayList<>();
-            for (Team team : Bukkit.getScoreboardManager().getMainScoreboard().getTeams()) {
-                teams.add(team.getName());
-            }
-            return filter(teams, args[2]);
+            return filter(new ArrayList<>(PvzMode.LANE_IDS), args[2]);
         }
         if (args.length == 2 && (args[0].equalsIgnoreCase("bind") || args[0].equalsIgnoreCase("kill"))) {
             List<String> teams = new ArrayList<>();

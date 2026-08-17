@@ -11,9 +11,9 @@ import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.List;
 
-/** PVZ 模式选择界面：准备 / 取消准备 / 规则说明 / 状态 / 返回。 */
+/** 随机植物对战随机僵尸模式选择界面：准备 / 取消准备 / 规则说明 / 状态 / 返回。 */
 public final class PvzModeMenu implements InventoryHolder {
-    public static final String TITLE = "植物大战僵尸模式";
+    public static final String TITLE = "随机植物对战随机僵尸";
     public static final int READY_SLOT = 0;
     public static final int INFO_SLOT = 1;
     public static final int STATUS_SLOT = 4;
@@ -28,10 +28,10 @@ public final class PvzModeMenu implements InventoryHolder {
         boolean ready = pvz != null && pvz.isReady(player);
         inventory.setItem(READY_SLOT, button(ready ? Material.LIME_WOOL : Material.GREEN_WOOL,
                 ready ? "已准备（PVZ）" : "准备（PVZ）",
-                ready ? "点击取消后再重新准备" : "开局随机分配职业（剑士/弓箭手）"));
-        inventory.setItem(INFO_SLOT, info(Material.BOOK, "PVZ 模式规则",
-                "每队一条路，怪物从路尽头走来；守住基地（10 点生命），"
-                        + "死亡不复活；队伍全灭即淘汰，坚持到最后获胜。"));
+                ready ? "点击取消后再重新准备" : "开局随机分配职业（剑士/弓箭手）与五条路之一"));
+        inventory.setItem(INFO_SLOT, info(Material.BOOK, "模式规则",
+                "共五条数字路，玩家随机分路；怪物从路尽头走来，守住基地（10 点生命），"
+                        + "死亡不复活；一路全员阵亡即淘汰，坚持到最后获胜。"));
         if (pvz != null) {
             inventory.setItem(STATUS_SLOT, statusItem(pvz));
         }

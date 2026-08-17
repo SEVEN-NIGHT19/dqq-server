@@ -36,15 +36,16 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * 植物大战僵尸模式（PVZ）核心状态机。
+ * 随机植物对战随机僵尸模式（PVZ）核心状态机。
  * 与经典 Dave PvE 大模式完全独立：独立场地（config 配置）、独立职业、独立怪物
  * （pvz_ 前缀标签，经典模式的 isMonster/isDave 不会触碰）、独立胜负流程。
  *
  * 规则（按用户需求 + 已确认的缺陷补全）：
- * - 每队一条路；玩家开局随机职业（剑士/弓箭手，可重复），死亡转观察者不复活；
- * - 每队基地生命（默认 10），怪物走到路终点扣 1 点，归零该队淘汰；
- * - 队伍全灭（全部玩家死亡）即淘汰；坚持到其他所有队伍失败即获胜；
- * - 开局只有一队有玩家 → 正常开始，队伍全灭才结束；
+ * - 五条数字路（one~five，显示 1路~5路），与四色队伍完全解耦；玩家开局随机职业
+ *   （剑士/弓箭手，可重复）、随机分路（人数少的路优先），死亡转观察者不复活；
+ * - 每路基地生命（默认 10），怪物走到路终点扣 1 点，归零该路淘汰；
+ * - 一路全员阵亡即淘汰；坚持到其他所有路失败即获胜；
+ * - 开局只有一路有玩家 → 正常开始，全员阵亡才结束；
  * - 主路怪物只做「盲盒僵尸」，死亡后随机召唤原版僵尸（不掉落、不燃）或原版苦力怕（不掉落）；
  * - 波次无限，难度随时间递增；与经典模式可同时运行。
  */
@@ -53,6 +54,13 @@ public final class PvzMode {
     public static final String TAG_MONSTER = "pvz_monster";
     public static final String TAG_BLINDBOX = "pvz_blindbox";
     public static final String TAG_SUMMON = "pvz_summon";
+
+    /** PVZ 五条数字路（one~five），不再使用四色队伍。 */
+    public static final List<String> LANE_IDS = List.of("one", "two", "three", "four", "five");
+    public static final Map<String, String> LANE_DISPLAYS = Map.of(
+            "one", "1路", "two", "2路", "three", "3路", "four", "4路", "five", "5路");
+    /** 旧版 PVZ 曾用四色队伍作为路；启动时一次性清理其 config 坐标。 */
+    private static final List<String> LEGACY_COLOR_LANES = List.of("red", "blue", "yellow", "green");
 
     private static final int ARRIVAL_DISTANCE_SQ = 3; // ~1.7 格水平距离
     private static final double TARGET_RANGE = 8.0;
@@ -92,8 +100,8 @@ public final class PvzMode {
         this.plugin = plugin;
         this.manager = manager;
         this.laneKey = new NamespacedKey(plugin, "pvz_lane");
-        for (String id : DaveManager.TEAM_IDS) {
-            lanes.put(id, new PvzLane(id, DaveManager.TEAM_DISPLAYS.getOrDefault(id, id), baseHealth));
+        for (String id : LANE_IDS) {
+            lanes.put(id, new PvzLane(id, LANE_DISPLAYS.getOrDefault(id, id), baseHealth));
         }
     }
 
@@ -113,7 +121,7 @@ public final class PvzMode {
         return running;
     }
 
-    /** 上一局获胜队伍 id（无胜者为 null）。 */
+    /** 上一局获胜路 id（无胜者为 null）。 */
     public String lastWinner() {
         return winnerLane;
     }
@@ -184,6 +192,18 @@ public final class PvzMode {
                 lane.setBase(readLoc(laneSec, "base"));
                 lane.setPlayerSpawn(readLoc(laneSec, "player"));
             }
+            // 旧版用四色队伍（red/blue/yellow/green）作为路；PVZ 改为数字路后，
+            // 一次性删除测试期留下的四色队伍坐标（以后四色队伍只用于大模式）。
+            boolean removedLegacy = false;
+            for (String legacy : LEGACY_COLOR_LANES) {
+                if (sec.contains(legacy)) {
+                    cfg.set("pvz.lanes." + legacy, null);
+                    removedLegacy = true;
+                }
+            }
+            if (removedLegacy) {
+                plugin.saveConfig();
+            }
         }
     }
 
@@ -231,7 +251,7 @@ public final class PvzMode {
     public String setLaneSpawn(String team, String worldName, double x, double y, double z) {
         PvzLane lane = lanes.get(team);
         if (lane == null) {
-            return ChatColor.RED + "未知队伍: " + team;
+            return ChatColor.RED + "未知路: " + team;
         }
         World world = Bukkit.getWorld(worldName);
         if (world == null) {
@@ -240,7 +260,7 @@ public final class PvzMode {
         lane.setSpawn(new Location(world, x, y, z));
         lane.setWorld(worldName);
         saveLaneConfig(team);
-        return ChatColor.GREEN + "已设置 " + lane.display() + " 路怪物生成点";
+        return ChatColor.GREEN + "已设置 " + lane.display() + " 的怪物生成点";
     }
 
     public String setLaneBase(String team, Player admin) {
@@ -251,7 +271,7 @@ public final class PvzMode {
     public String setLaneBase(String team, String worldName, double x, double y, double z) {
         PvzLane lane = lanes.get(team);
         if (lane == null) {
-            return ChatColor.RED + "未知队伍: " + team;
+            return ChatColor.RED + "未知路: " + team;
         }
         World world = Bukkit.getWorld(worldName);
         if (world == null) {
@@ -260,7 +280,7 @@ public final class PvzMode {
         lane.setBase(new Location(world, x, y, z));
         lane.setWorld(worldName);
         saveLaneConfig(team);
-        return ChatColor.GREEN + "已设置 " + lane.display() + " 路终点（基地）";
+        return ChatColor.GREEN + "已设置 " + lane.display() + " 的终点（基地）";
     }
 
     public String setLanePlayerSpawn(String team, Player admin) {
@@ -271,7 +291,7 @@ public final class PvzMode {
     public String setLanePlayerSpawn(String team, String worldName, double x, double y, double z) {
         PvzLane lane = lanes.get(team);
         if (lane == null) {
-            return ChatColor.RED + "未知队伍: " + team;
+            return ChatColor.RED + "未知路: " + team;
         }
         World world = Bukkit.getWorld(worldName);
         if (world == null) {
@@ -280,7 +300,7 @@ public final class PvzMode {
         lane.setPlayerSpawn(new Location(world, x, y, z));
         lane.setWorld(worldName);
         saveLaneConfig(team);
-        return ChatColor.GREEN + "已设置 " + lane.display() + " 路玩家出生点";
+        return ChatColor.GREEN + "已设置 " + lane.display() + " 的玩家出生点";
     }
 
     // ---------------------------------------------------------------- 波次数值（纯逻辑，可单测）
@@ -326,23 +346,23 @@ public final class PvzMode {
         // 校验场地
         for (PvzLane lane : lanes.values()) {
             if (!lane.isConfigured()) {
-                requester.sendMessage(ChatColor.RED + "【PVZ】" + lane.display() + " 路场地未配置，请先使用 "
+                requester.sendMessage(ChatColor.RED + "【PVZ】" + lane.display() + " 场地未配置，请先使用 "
                         + ChatColor.YELLOW + "/davepve pvz setspawn|setbase|setplayer " + lane.id());
                 return;
             }
             World world = Bukkit.getWorld(lane.world());
             if (world == null) {
-                requester.sendMessage(ChatColor.RED + "【PVZ】" + lane.display() + " 路世界不存在: " + lane.world());
+                requester.sendMessage(ChatColor.RED + "【PVZ】" + lane.display() + " 世界不存在: " + lane.world());
                 return;
             }
         }
-        // 按路分组
+        // 按路分组（随机分路：人数少的路优先，与四色队伍无关）
         Map<String, List<Player>> byLane = new LinkedHashMap<>();
         for (String id : lanes.keySet()) {
             byLane.put(id, new ArrayList<>());
         }
         for (Player p : ready) {
-            String laneId = pickLaneFor(p, byLane);
+            String laneId = pickLaneFor(byLane);
             byLane.get(laneId).add(p);
         }
         // 准备就绪：发职业、传送、入场
@@ -371,7 +391,8 @@ public final class PvzMode {
                 World world = Bukkit.getWorld(lane.world());
                 Location spawn = lane.playerSpawn();
                 p.teleport(new Location(world, spawn.getX() + 0.5, spawn.getY(), spawn.getZ() + 0.5));
-                p.sendTitle(ChatColor.GOLD + "PVZ 模式开始", "你的职业：" + clazz.displayName(), 10, 60, 10);
+                p.sendTitle(ChatColor.GOLD + "随机植物对战随机僵尸",
+                        "你的路：" + lane.display() + " · 职业：" + clazz.displayName(), 10, 60, 10);
                 refreshListName(p);
             }
         }
@@ -384,22 +405,14 @@ public final class PvzMode {
         buildSidebar();
         buildBars();
         tickTask = Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 20L, 20L);
-        Bukkit.broadcastMessage(ChatColor.GOLD + "【PVZ】植物大战僵尸模式开始！"
-                + ChatColor.GRAY + "守住你的路，坚持到其他队伍全部失败！");
+        Bukkit.broadcastMessage(ChatColor.GOLD + "【PVZ】随机植物对战随机僵尸开始！"
+                + ChatColor.GRAY + "守住你的路，坚持到其他路全部失败！");
         Bukkit.broadcastMessage(ChatColor.GRAY + "【PVZ】第 1 波即将来袭；死亡不会复活，基地生命 "
                 + baseHealth + " 点。");
     }
 
-    /** 为玩家选择路：优先已选队伍，其次当前队伍，最后人数最少的路。 */
-    private String pickLaneFor(Player player, Map<String, List<Player>> byLane) {
-        String pref = manager.teamPreference(player);
-        if (pref != null && lanes.containsKey(pref)) {
-            return pref;
-        }
-        String current = manager.getTeamName(player);
-        if (current != null && lanes.containsKey(current)) {
-            return current;
-        }
+    /** 为玩家选择路：人数最少的路优先（随机分路，与四色队伍完全无关）。 */
+    private String pickLaneFor(Map<String, List<Player>> byLane) {
         String best = null;
         int min = Integer.MAX_VALUE;
         for (Map.Entry<String, List<Player>> e : byLane.entrySet()) {
@@ -462,7 +475,7 @@ public final class PvzMode {
             PvzLane lane = lanes.get(winner);
             Bukkit.broadcastMessage(ChatColor.GOLD + "【PVZ】" + lane.display() + " 获胜！坚持到了最后！");
         } else if (!adminStop) {
-            Bukkit.broadcastMessage(ChatColor.GOLD + "【PVZ】所有队伍均失败，本局无胜者");
+            Bukkit.broadcastMessage(ChatColor.GOLD + "【PVZ】所有路均失败，本局无胜者");
         }
         pvzPlayers.clear();
         playerClass.clear();
@@ -689,7 +702,7 @@ public final class PvzMode {
 
     // ---------------------------------------------------------------- 玩家死亡 / 退出
 
-    /** 监听器入口：PVZ 玩家死亡 → 观察者，不复活；队伍全灭即淘汰。 */
+    /** 监听器入口：PVZ 玩家死亡 → 观察者，不复活；一路全员阵亡即淘汰。 */
     public void onPlayerDeath(Player player) {
         if (!isPlaying(player)) {
             return;
@@ -713,7 +726,7 @@ public final class PvzMode {
             if (lane != null) {
                 lane.setAlivePlayers(lane.alivePlayers() - 1);
                 if (running && lane.isActive() == false && !lane.eliminated()) {
-                    eliminateLane(lane, "队伍全灭");
+                    eliminateLane(lane, "全员阵亡");
                 }
             }
         }
@@ -730,11 +743,11 @@ public final class PvzMode {
         }
         lane.setAlivePlayers(lane.alivePlayers() - 1);
         if (running && !lane.eliminated() && lane.alivePlayers() <= 0) {
-            eliminateLane(lane, "队伍全灭");
+            eliminateLane(lane, "全员阵亡");
         }
     }
 
-    /** 淘汰一条路：清怪、广播、判定剩余队伍。 */
+    /** 淘汰一条路：清怪、广播、判定剩余路并结束游戏。 */
     private void eliminateLane(PvzLane lane, String reason) {
         if (lane.eliminated()) {
             return;
@@ -797,7 +810,7 @@ public final class PvzMode {
             if (lane != null && !lane.eliminated()) {
                 lane.setAlivePlayers(lane.alivePlayers() - 1);
                 if (lane.alivePlayers() <= 0) {
-                    eliminateLane(lane, "队伍全灭");
+                    eliminateLane(lane, "全员阵亡");
                 }
             }
         }
@@ -811,7 +824,7 @@ public final class PvzMode {
         StringBuilder sb = new StringBuilder();
         sb.append(ChatColor.GOLD).append("[PVZ] ");
         if (laneId != null) {
-            sb.append(teamColor(laneId)).append(DaveManager.TEAM_DISPLAYS.getOrDefault(laneId, laneId)).append(' ');
+            sb.append(laneColor(laneId)).append(LANE_DISPLAYS.getOrDefault(laneId, laneId)).append(' ');
         }
         sb.append(ChatColor.WHITE).append(player.getName());
         if (clazz != null) {
@@ -821,19 +834,20 @@ public final class PvzMode {
         player.setDisplayName(sb.toString());
     }
 
-    private static ChatColor teamColor(String team) {
-        return switch (team) {
-            case "red" -> ChatColor.RED;
-            case "blue" -> ChatColor.BLUE;
-            case "yellow" -> ChatColor.YELLOW;
-            case "green" -> ChatColor.GREEN;
+    private static ChatColor laneColor(String lane) {
+        return switch (lane) {
+            case "one" -> ChatColor.WHITE;
+            case "two" -> ChatColor.GOLD;
+            case "three" -> ChatColor.AQUA;
+            case "four" -> ChatColor.LIGHT_PURPLE;
+            case "five" -> ChatColor.DARK_AQUA;
             default -> ChatColor.GRAY;
         };
     }
 
     private void buildSidebar() {
         pvzBoard = Bukkit.getScoreboardManager().getNewScoreboard();
-        sidebar = pvzBoard.registerNewObjective("pvz_mode", "dummy", "植物大战僵尸");
+        sidebar = pvzBoard.registerNewObjective("pvz_mode", "dummy", "随机植物对战随机僵尸");
         sidebar.setDisplaySlot(DisplaySlot.SIDEBAR);
         for (UUID id : pvzPlayers) {
             Player p = Bukkit.getPlayer(id);
@@ -857,7 +871,7 @@ public final class PvzMode {
             if (lane.eliminated()) {
                 line = ChatColor.RED + lane.display() + " 已淘汰";
             } else {
-                line = teamColor(lane.id()) + lane.display() + " " + lane.baseHealth() + "/"
+                line = laneColor(lane.id()) + lane.display() + " " + lane.baseHealth() + "/"
                         + lane.maxHealth() + ChatColor.GRAY + " 存活" + lane.alivePlayers();
             }
             sidebar.getScore(line).setScore(score--);
@@ -911,12 +925,13 @@ public final class PvzMode {
         laneBars.clear();
     }
 
-    private static BarColor barColor(String team) {
-        return switch (team) {
-            case "red" -> BarColor.RED;
-            case "blue" -> BarColor.BLUE;
-            case "yellow" -> BarColor.YELLOW;
-            case "green" -> BarColor.GREEN;
+    private static BarColor barColor(String lane) {
+        return switch (lane) {
+            case "one" -> BarColor.WHITE;
+            case "two" -> BarColor.YELLOW;
+            case "three" -> BarColor.BLUE;
+            case "four" -> BarColor.PINK;
+            case "five" -> BarColor.PURPLE;
             default -> BarColor.WHITE;
         };
     }

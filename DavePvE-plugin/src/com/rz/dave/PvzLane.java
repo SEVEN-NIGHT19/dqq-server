@@ -3,7 +3,7 @@ package com.rz.dave;
 import org.bukkit.Location;
 
 /**
- * PVZ 模式的一条路（= 一个队伍）。包含怪物生成点、路的终点（基地）、
+ * PVZ 模式的一条路（= 一条数字路，one~five）。包含怪物生成点、路的终点（基地）、
  * 玩家出生点、基地生命值与存活状态。纯状态对象，逻辑可单测。
  */
 public final class PvzLane {
