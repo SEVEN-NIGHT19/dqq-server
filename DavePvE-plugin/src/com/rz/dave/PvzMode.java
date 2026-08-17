@@ -28,6 +28,7 @@ import org.bukkit.scoreboard.Objective;
 import org.bukkit.scoreboard.Scoreboard;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -41,8 +42,12 @@ import java.util.UUID;
  * （pvz_ 前缀标签，经典模式的 isMonster/isDave 不会触碰）、独立胜负流程。
  *
  * 规则（按用户需求 + 已确认的缺陷补全）：
- * - 五条数字路（one~five，显示 1路~5路），与四色队伍完全解耦；玩家开局随机职业
- *   （剑士/弓箭手，可重复）、随机分路（人数少的路优先），死亡转观察者不复活；
+ * - 五条数字路（one~five，显示 1路~5路），与四色队伍完全解耦；一路 = 一个队伍，
+ *   每队最多 5 名玩家（默认 pvz.players-per-lane）共同守这一条路，一局上限 5×5=25 人；
+ *   分路按顺序优先凑满前面的队伍，超出上限的玩家本局不进入；本模式不能中途加入；
+ * - 玩家开局随机职业（剑士/弓箭手，可重复），死亡转观察者不复活；
+ * - PVZ 玩家默认无法自然回血（清空饱和度 + 拦截自然回血事件），后续由职业机制回血；
+ * - PVZ 怪物默认免疫击退（拦截 EntityKnockbackEvent），后续由其他机制代替击退；
  * - 每路基地生命（默认 10），怪物走到路终点扣 1 点，归零该路淘汰；
  * - 一路全员阵亡即淘汰；坚持到其他所有路失败即获胜；
  * - 开局只有一路有玩家 → 正常开始，全员阵亡才结束；
@@ -62,6 +67,9 @@ public final class PvzMode {
     /** 旧版 PVZ 曾用四色队伍作为路；启动时一次性清理其 config 坐标。 */
     private static final List<String> LEGACY_COLOR_LANES = List.of("red", "blue", "yellow", "green");
 
+    /** 每条路（每个队伍）玩家上限的默认值。 */
+    public static final int DEFAULT_PLAYERS_PER_LANE = 5;
+
     private static final int ARRIVAL_DISTANCE_SQ = 3; // ~1.7 格水平距离
     private static final double TARGET_RANGE = 8.0;
     private static final int SPAWN_TIMER_STEP_TICKS = 20; // tick() 每秒执行一次
@@ -80,6 +88,7 @@ public final class PvzMode {
     private double monsterHealthBase = 20.0;
     private double monsterHealthGrowth = 2.0;
     private double monsterAttackMultiplier = 0.5;
+    private int playersPerLane = DEFAULT_PLAYERS_PER_LANE; // 每条路（每队）玩家上限
 
     private final Map<String, PvzLane> lanes = new LinkedHashMap<>();
     private final Set<UUID> pvzReady = new java.util.LinkedHashSet<>();
@@ -179,6 +188,7 @@ public final class PvzMode {
         monsterHealthBase = cfg.getDouble("pvz.monster-health-base", 20.0);
         monsterHealthGrowth = cfg.getDouble("pvz.monster-health-growth", 2.0);
         monsterAttackMultiplier = cfg.getDouble("pvz.monster-attack-multiplier", 0.5);
+        playersPerLane = Math.max(1, cfg.getInt("pvz.players-per-lane", DEFAULT_PLAYERS_PER_LANE));
         ConfigurationSection sec = cfg.getConfigurationSection("pvz.lanes");
         if (sec != null) {
             for (String id : lanes.keySet()) {
@@ -356,14 +366,28 @@ public final class PvzMode {
                 return;
             }
         }
-        // 按路分组（随机分路：人数少的路优先，与四色队伍无关）
+        // 本模式不能中途加入：开局时一次性快照准备名单，进行中不再接收新玩家
+        // 人数上限：5 路 × 每路上限（默认 5 人）= 25 人；超出部分随机剔除，本局不进入
+        int maxPlayers = lanes.size() * playersPerLane;
+        if (ready.size() > maxPlayers) {
+            Collections.shuffle(ready);
+            for (Player excluded : ready.subList(maxPlayers, ready.size())) {
+                excluded.sendMessage(ChatColor.YELLOW + "【PVZ】本局名额已满（上限 " + maxPlayers
+                        + " 人），你未入选本局游戏，可准备下一局。");
+            }
+            ready = new ArrayList<>(ready.subList(0, maxPlayers));
+        }
+        // 分路：一路 = 一个队伍，按顺序优先凑满前面的队伍（每队最多 playersPerLane 人）
         Map<String, List<Player>> byLane = new LinkedHashMap<>();
         for (String id : lanes.keySet()) {
             byLane.put(id, new ArrayList<>());
         }
+        int laneIndex = 0;
         for (Player p : ready) {
-            String laneId = pickLaneFor(byLane);
-            byLane.get(laneId).add(p);
+            while (byLane.get(LANE_IDS.get(laneIndex)).size() >= playersPerLane) {
+                laneIndex++;
+            }
+            byLane.get(LANE_IDS.get(laneIndex)).add(p);
         }
         // 准备就绪：发职业、传送、入场
         waveIndex = 0;
@@ -405,23 +429,21 @@ public final class PvzMode {
         buildSidebar();
         buildBars();
         tickTask = Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 20L, 20L);
-        Bukkit.broadcastMessage(ChatColor.GOLD + "【PVZ】随机植物对战随机僵尸开始！"
-                + ChatColor.GRAY + "守住你的路，坚持到其他路全部失败！");
-        Bukkit.broadcastMessage(ChatColor.GRAY + "【PVZ】第 1 波即将来袭；死亡不会复活，基地生命 "
-                + baseHealth + " 点。");
-    }
-
-    /** 为玩家选择路：人数最少的路优先（随机分路，与四色队伍完全无关）。 */
-    private String pickLaneFor(Map<String, List<Player>> byLane) {
-        String best = null;
-        int min = Integer.MAX_VALUE;
-        for (Map.Entry<String, List<Player>> e : byLane.entrySet()) {
-            if (e.getValue().size() < min) {
-                min = e.getValue().size();
-                best = e.getKey();
+        StringBuilder roster = new StringBuilder();
+        for (String id : LANE_IDS) {
+            if (!byLane.get(id).isEmpty()) {
+                if (roster.length() > 0) {
+                    roster.append("，");
+                }
+                roster.append(LANE_DISPLAYS.get(id)).append(' ').append(byLane.get(id).size()).append(" 人");
             }
         }
-        return best;
+        Bukkit.broadcastMessage(ChatColor.GOLD + "【PVZ】随机植物对战随机僵尸开始！"
+                + ChatColor.GRAY + "守住你的路，坚持到其他路全部失败！");
+        Bukkit.broadcastMessage(ChatColor.GRAY + "【PVZ】本局 " + ready.size() + " 人：" + roster
+                + "；本模式不能中途加入。");
+        Bukkit.broadcastMessage(ChatColor.GRAY + "【PVZ】第 1 波即将来袭；死亡不会复活，基地生命 "
+                + baseHealth + " 点。");
     }
 
     public void stopGame(CommandSender requester) {
@@ -490,6 +512,15 @@ public final class PvzMode {
     private void tick() {
         if (!running) {
             return;
+        }
+        // PVZ 默认无自然回血：维持满饥饿但清空饱和度（自然回血需饱和度过 0），同时避免饿死；
+        // 后续回血职业请用 setHealth 或 MAGIC/CUSTOM 来源，不受此拦截影响。
+        for (UUID id : pvzPlayers) {
+            Player p = Bukkit.getPlayer(id);
+            if (p != null && p.isOnline() && p.getGameMode() != GameMode.SPECTATOR) {
+                p.setFoodLevel(20);
+                p.setSaturation(0.0f);
+            }
         }
         long now = Bukkit.getCurrentTick();
         if (now - waveStartedTick >= waveDurationTicks) {

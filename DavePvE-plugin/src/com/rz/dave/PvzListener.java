@@ -1,5 +1,6 @@
 package com.rz.dave;
 
+import io.papermc.paper.event.entity.EntityKnockbackEvent;
 import org.bukkit.GameMode;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
@@ -11,6 +12,7 @@ import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
+import org.bukkit.event.entity.EntityRegainHealthEvent;
 import org.bukkit.event.entity.EntityTargetEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
@@ -152,6 +154,29 @@ public final class PvzListener implements Listener {
             return pvz.isPlaying(player);
         }
         return false;
+    }
+
+    /** PVZ 玩家默认无法自然回血：拦截自然再生/饱食/进食回血（保留药水与插件自定义来源，
+     *  供后续回血职业使用；职业回血亦可直接 setHealth，不触发本事件）。 */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onRegainHealth(EntityRegainHealthEvent event) {
+        if (!(event.getEntity() instanceof Player player) || !pvz.isPlaying(player)) {
+            return;
+        }
+        EntityRegainHealthEvent.RegainReason reason = event.getRegainReason();
+        if (reason == EntityRegainHealthEvent.RegainReason.REGEN
+                || reason == EntityRegainHealthEvent.RegainReason.SATIATED
+                || reason == EntityRegainHealthEvent.RegainReason.EATING) {
+            event.setCancelled(true);
+        }
+    }
+
+    /** PVZ 怪物默认免疫击退（近战/横扫/投射物/爆炸等一切来源），后续由其他机制代替击退。 */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onKnockback(EntityKnockbackEvent event) {
+        if (pvz.isPvzMonster(event.getEntity())) {
+            event.setCancelled(true);
+        }
     }
 
     /** PVZ 玩家中途退出：视同阵亡，可能触发队伍淘汰。 */

@@ -30,8 +30,9 @@ public final class PvzModeMenu implements InventoryHolder {
                 ready ? "已准备（PVZ）" : "准备（PVZ）",
                 ready ? "点击取消后再重新准备" : "开局随机分配职业（剑士/弓箭手）与五条路之一"));
         inventory.setItem(INFO_SLOT, info(Material.BOOK, "模式规则",
-                "共五条数字路，玩家随机分路；怪物从路尽头走来，守住基地（10 点生命），"
-                        + "死亡不复活；一路全员阵亡即淘汰，坚持到最后获胜。"));
+                "一路 = 一个队伍，每队最多 5 人共同守路（一局最多 25 人）；"
+                        + "守住基地（10 点生命），死亡不复活；一路全员阵亡即淘汰，"
+                        + "坚持到最后获胜；开局后不能中途加入，玩家默认无法自然回血。"));
         if (pvz != null) {
             inventory.setItem(STATUS_SLOT, statusItem(pvz));
         }
