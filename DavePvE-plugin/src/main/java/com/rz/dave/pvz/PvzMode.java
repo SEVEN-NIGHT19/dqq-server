@@ -1,5 +1,6 @@
 package com.rz.dave.pvz;
 import com.rz.dave.DaveManager;
+import com.rz.dave.monster.MonsterManager;
 
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
@@ -13,11 +14,9 @@ import org.bukkit.boss.BossBar;
 import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
-import org.bukkit.entity.Creeper;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
-import org.bukkit.entity.Zombie;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.inventory.ItemStack;
@@ -52,14 +51,14 @@ import java.util.UUID;
  * - 每路基地生命（默认 10），怪物走到路终点扣 1 点，归零该路淘汰；
  * - 一路全员阵亡即淘汰；坚持到其他所有路失败即获胜；
  * - 开局只有一路有玩家 → 正常开始，全员阵亡才结束；
- * - 主路怪物只做「盲盒僵尸」，死亡后随机召唤原版僵尸（不掉落、不燃）或原版苦力怕（不掉落）；
+ * - 主路怪物只做「盲盒僵尸」，死亡后随机召唤原版僵尸 / 巨人僵尸 / 苦力怕（均不掉落、不惧阳光）；
  * - 波次无限，难度随时间递增；与经典模式可同时运行。
  */
 public final class PvzMode {
 
-    public static final String TAG_MONSTER = "pvz_monster";
-    public static final String TAG_BLINDBOX = "pvz_blindbox";
-    public static final String TAG_SUMMON = "pvz_summon";
+    public static final String TAG_MONSTER = MonsterManager.TAG_MONSTER;
+    public static final String TAG_BLINDBOX = MonsterManager.TAG_BLINDBOX;
+    public static final String TAG_SUMMON = MonsterManager.TAG_SUMMON;
 
     /** PVZ 五条数字路（one~five），不再使用四色队伍。 */
     public static final List<String> LANE_IDS = List.of("one", "two", "three", "four", "five");
@@ -620,75 +619,36 @@ public final class PvzMode {
         Location spawn = lane.spawn();
         Location loc = spawn.clone().add(
                 (Math.random() - 0.5) * 2.0, 0, (Math.random() - 0.5) * 2.0);
-        Zombie zombie = world.spawn(loc, Zombie.class, z -> {
-            z.setBaby(false);
-            z.setCanPickupItems(false);
-            z.setShouldBurnInDay(false);
-            z.getEquipment().clear();
-            z.getEquipment().setHelmet(blindBoxHelmet());
-            z.getEquipment().setHelmetDropChance(0.0f);
-            z.setCustomName(ChatColor.DARK_RED + "盲盒僵尸");
-            z.setCustomNameVisible(true);
-            z.addScoreboardTag(TAG_MONSTER);
-            z.addScoreboardTag(TAG_BLINDBOX);
-            z.setRemoveWhenFarAway(false);
-            z.setPersistent(true);
-            z.getPersistentDataContainer().set(laneKey, PersistentDataType.STRING, lane.id());
-        });
-        if (zombie != null) {
-            double hp = monsterHealth(waveIndex);
-            zombie.setMaxHealth(hp);
-            zombie.setHealth(hp);
-            org.bukkit.attribute.AttributeInstance atk = zombie.getAttribute(
-                    org.bukkit.attribute.Attribute.ATTACK_DAMAGE);
-            if (atk != null) {
-                atk.setBaseValue(atk.getBaseValue() * monsterAttackMultiplier);
-            }
-        }
+        MonsterManager.spawnBlindBoxZombie(world, loc, lane.id(), laneKey,
+                monsterHealth(waveIndex), monsterAttackMultiplier);
     }
 
-    /** 盲盒僵尸死亡 → 随机召唤原版僵尸或苦力怕（均为 PVZ 独立标签怪物）。 */
+    /**
+     * 盲盒僵尸死亡 → 随机召唤原版僵尸、巨人僵尸或苦力怕（均为 PVZ 独立标签怪物；
+     * 概率 50% 苦力怕 / 25% 原版僵尸 / 25% 巨人僵尸）。
+     */
     public void onBlindBoxDeath(Mob mob) {
         PvzLane lane = laneOfMob(mob);
         if (lane == null) {
             return;
         }
         Location loc = mob.getLocation();
-        boolean zombie = Math.random() < 0.5;
-        if (zombie) {
-            World world = loc.getWorld();
-            if (world == null) {
-                return;
+        World world = loc.getWorld();
+        if (world == null) {
+            return;
+        }
+        double roll = Math.random();
+        if (roll < 0.50) {
+            if (MonsterManager.spawnSummonCreeper(world, loc, lane.id(), laneKey) != null) {
+                Bukkit.broadcastMessage(ChatColor.YELLOW + "【PVZ】盲盒僵尸死亡，召唤出一只原版苦力怕！");
             }
-            Zombie z = world.spawn(loc, Zombie.class, e -> {
-                e.setBaby(false);
-                e.setCanPickupItems(false);
-                e.setShouldBurnInDay(false);
-                e.getEquipment().clear();
-                e.addScoreboardTag(TAG_MONSTER);
-                e.addScoreboardTag(TAG_SUMMON);
-                e.setRemoveWhenFarAway(false);
-                e.setPersistent(true);
-                e.getPersistentDataContainer().set(laneKey, PersistentDataType.STRING, lane.id());
-            });
-            if (z != null) {
+        } else if (roll < 0.75) {
+            if (MonsterManager.spawnSummonZombie(world, loc, lane.id(), laneKey, false) != null) {
                 Bukkit.broadcastMessage(ChatColor.YELLOW + "【PVZ】盲盒僵尸死亡，召唤出一只原版僵尸！");
             }
         } else {
-            World world = loc.getWorld();
-            if (world == null) {
-                return;
-            }
-            Creeper c = world.spawn(loc, Creeper.class, e -> {
-                e.setCanPickupItems(false);
-                e.addScoreboardTag(TAG_MONSTER);
-                e.addScoreboardTag(TAG_SUMMON);
-                e.setRemoveWhenFarAway(false);
-                e.setPersistent(true);
-                e.getPersistentDataContainer().set(laneKey, PersistentDataType.STRING, lane.id());
-            });
-            if (c != null) {
-                Bukkit.broadcastMessage(ChatColor.YELLOW + "【PVZ】盲盒僵尸死亡，召唤出一只原版苦力怕！");
+            if (MonsterManager.spawnSummonZombie(world, loc, lane.id(), laneKey, true) != null) {
+                Bukkit.broadcastMessage(ChatColor.DARK_RED + "【PVZ】盲盒僵尸死亡，召唤出一只巨人僵尸！");
             }
         }
     }
