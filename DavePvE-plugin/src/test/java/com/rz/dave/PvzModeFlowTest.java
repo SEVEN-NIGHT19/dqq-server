@@ -14,6 +14,9 @@ import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityRegainHealthEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
+import org.bukkit.GameMode;
+import org.bukkit.Location;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.Material;
 import org.bukkit.plugin.Plugin;
@@ -33,6 +36,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -299,5 +303,67 @@ class PvzModeFlowTest {
                 normal, EntityKnockbackEvent.Cause.ENTITY_ATTACK, new Vector(1, 0, 0));
         listener.onKnockback(kb2);
         assertFalse(kb2.isCancelled(), "非 PVZ 怪物不受影响");
+    }
+
+    // ---------------------------------------------------------------- 结束流程（10 秒缓冲 / 清背包 / 观战在场）
+
+    private static long nonNullSlots(PlayerMock p) {
+        return java.util.Arrays.stream(p.getInventory().getContents())
+                .filter(java.util.Objects::nonNull).count();
+    }
+
+    @Test
+    void gameEndClearsInventoryAndReturnsAfterTenSeconds() {
+        List<PlayerMock> players = readyAndStart(2, "End");
+        PlayerMock a = players.get(0);
+        PlayerMock b = players.get(1);
+        pvz.onPlayerDeath(a);
+        pvz.onPlayerDeath(b); // 1路全灭 → 所有路失败，结束
+        assertFalse(pvz.isRunning());
+        assertNull(pvz.lastWinner(), "全员阵亡无胜者");
+        // 结束瞬间即清空背包（职业武器不残留）
+        assertEquals(0, nonNullSlots(a), "游戏结束应立即清空背包");
+        assertEquals(0, nonNullSlots(b));
+        // 10 秒缓冲：玩家仍是 rprz 玩家（留在场地观战，尚未回大厅）
+        assertTrue(pvz.isPlaying(a), "缓冲期内玩家仍在 PVZ 状态");
+        // 10 秒后清退回大厅：不再是 PVZ 玩家、恢复正常模式（可被杀/可用菜单）
+        server.getScheduler().performTicks(201);
+        assertFalse(pvz.isPlaying(a));
+        assertFalse(pvz.isPlaying(b));
+        assertEquals(GameMode.ADVENTURE, a.getGameMode(), "结束清退后应恢复普通模式");
+        assertEquals(GameMode.ADVENTURE, b.getGameMode());
+    }
+
+    @Test
+    void deathRespawnStaysAtLaneFieldNotLobby() {
+        List<PlayerMock> players = readyAndStart(2, "Respawn");
+        PlayerMock a = players.get(0);
+        assertEquals("one", pvz.laneOf(a));
+        pvz.onPlayerDeath(a); // 阵亡观战
+        PvzListener listener = new PvzListener(pvz);
+        PlayerRespawnEvent event = new PlayerRespawnEvent(a, a.getLocation(), false, false);
+        listener.onPlayerRespawn(event);
+        Location loc = event.getRespawnLocation();
+        // 观战重生点应回到本路游玩场地（1路玩家出生点 11,1,33 +0.5），而不是大厅/世界出生点
+        assertEquals(11.5, loc.getX(), 0.001, "观战重生点应在游玩场地（x）");
+        assertEquals(1.0, loc.getY(), 0.001);
+        assertEquals(33.5, loc.getZ(), 0.001);
+        assertEquals(GameMode.SPECTATOR, a.getGameMode(), "观战保持观察者模式");
+    }
+
+    @Test
+    void lastPlayerDeathIsNeverLeftInvincibleAfterEnd() {
+        List<PlayerMock> players = readyAndStart(2, "Last");
+        PlayerMock a = players.get(0);
+        PlayerMock b = players.get(1);
+        pvz.onPlayerDeath(a);
+        pvz.onPlayerDeath(b); // 最后一名玩家死亡 → 结束
+        assertFalse(pvz.isRunning());
+        server.getScheduler().performTicks(201);
+        // 结束清退后任何参与者都不得滞留在观战/无敌状态（可被击杀、可使用物品栏菜单）
+        assertEquals(GameMode.ADVENTURE, a.getGameMode(), "结束后玩家不得停留在无敌观战状态");
+        assertEquals(GameMode.ADVENTURE, b.getGameMode());
+        assertFalse(pvz.isPlaying(a));
+        assertFalse(pvz.isPlaying(b));
     }
 }

@@ -56,15 +56,16 @@ public final class PvzListener implements Listener {
         pvz.onPlayerDeath(player);
     }
 
-    /** PVZ 玩家重生成：强制保持观察者并回大厅，避免复活机制干扰。 */
+    /** PVZ 玩家重生成：保持观察者且回到本路游玩场地（观战），避免复活到大厅/世界出生点。 */
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onPlayerRespawn(PlayerRespawnEvent event) {
         Player player = event.getPlayer();
         if (!pvz.isPlaying(player)) {
             return;
         }
+        event.setRespawnLocation(pvz.respawnLocation(player));
         player.setGameMode(GameMode.SPECTATOR);
-        player.sendMessage(org.bukkit.ChatColor.RED + "【PVZ】你已阵亡，本局不会复活。");
+        player.sendMessage(org.bukkit.ChatColor.RED + "【PVZ】你已阵亡，本局不会复活，观战中；游戏结束约 10 秒后返回大厅。");
     }
 
     /** PVZ 苦力怕爆炸不破坏地形（保留实体伤害）。 */

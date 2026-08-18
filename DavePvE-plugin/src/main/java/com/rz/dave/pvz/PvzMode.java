@@ -102,6 +102,9 @@ public final class PvzMode {
     private int waveIndex;
     private long waveStartedTick;
     private BukkitTask tickTask;
+    /** 游戏结束后的 10 秒缓冲：此窗口内玩家留在场地观战，随后统一清退回大厅。 */
+    private List<UUID> pendingEndPlayers;
+    private BukkitTask pendingEndTask;
     private Scoreboard pvzBoard;
     private Objective sidebar;
     private String winnerLane;
@@ -343,6 +346,8 @@ public final class PvzMode {
             requester.sendMessage(ChatColor.GOLD + "【PVZ】PVZ 模式正在进行中");
             return;
         }
+        // 上一局若还有未执行的 10 秒清退，立即完成，避免旧局玩家残留 PVZ 状态。
+        flushPendingEnd();
         List<Player> ready = new ArrayList<>();
         for (UUID id : pvzReady) {
             Player p = Bukkit.getPlayer(id);
@@ -479,6 +484,7 @@ public final class PvzMode {
     }
 
     private void endGameInternal(String winner, boolean adminStop) {
+        cancelPendingEnd();
         if (tickTask != null) {
             tickTask.cancel();
             tickTask = null;
@@ -488,10 +494,28 @@ public final class PvzMode {
         removeAllPvzMobs();
         removeBars();
         clearSidebar();
-        for (UUID id : new ArrayList<>(pvzPlayers)) {
+        // 结束即清空参与者背包（职业装备不残留），红字在屏幕中央公布结束（仅限 rprz 玩家）。
+        List<UUID> ended = new ArrayList<>(pvzPlayers);
+        for (UUID id : ended) {
             Player p = Bukkit.getPlayer(id);
             if (p != null && p.isOnline()) {
-                returnPlayerToLobby(p, false);
+                p.getInventory().clear();
+                p.getEnderChest().clear();
+            }
+        }
+        String subtitle;
+        if (winner != null) {
+            PvzLane wl = lanes.get(winner);
+            subtitle = (wl != null ? wl.display() : winner) + " 获胜！坚持到了最后！";
+        } else if (adminStop) {
+            subtitle = "管理员已结束游戏";
+        } else {
+            subtitle = "所有路均失败，本局无胜者";
+        }
+        for (UUID id : ended) {
+            Player p = Bukkit.getPlayer(id);
+            if (p != null && p.isOnline()) {
+                p.sendTitle(ChatColor.RED + "游戏结束", subtitle, 10, 70, 10);
             }
         }
         if (winner != null) {
@@ -500,11 +524,51 @@ public final class PvzMode {
         } else if (!adminStop) {
             Bukkit.broadcastMessage(ChatColor.GOLD + "【PVZ】所有路均失败，本局无胜者");
         }
+        // 10 秒缓冲后统一清退回大厅；管理员强制结束则立即清退。
+        pendingEndPlayers = ended;
+        if (adminStop) {
+            finishPendingEnd();
+        } else {
+            pendingEndTask = Bukkit.getScheduler().runTaskLater(plugin, this::finishPendingEnd, 200L);
+        }
+    }
+
+    /** 结束收尾：把记录在案的 PVZ 玩家清退回大厅，并重置本局状态。 */
+    private void finishPendingEnd() {
+        pendingEndTask = null;
+        if (pendingEndPlayers != null) {
+            for (UUID id : pendingEndPlayers) {
+                Player p = Bukkit.getPlayer(id);
+                if (p != null && p.isOnline()) {
+                    try {
+                        returnPlayerToLobby(p, false);
+                    } catch (RuntimeException e) {
+                        plugin.getLogger().warning("【PVZ】结束清退玩家失败: " + id + " - " + e.getMessage());
+                    }
+                }
+            }
+            pendingEndPlayers = null;
+        }
         pvzPlayers.clear();
         playerClass.clear();
         playerLane.clear();
         for (PvzLane lane : lanes.values()) {
             lane.reset(baseHealth);
+        }
+    }
+
+    /** 取消尚未执行的结束清退任务（不执行清退）。 */
+    private void cancelPendingEnd() {
+        if (pendingEndTask != null) {
+            pendingEndTask.cancel();
+            pendingEndTask = null;
+        }
+    }
+
+    /** 若存在未执行的结束清退，立即执行完成（新局开始前调用）。 */
+    private void flushPendingEnd() {
+        if (pendingEndTask != null || pendingEndPlayers != null) {
+            finishPendingEnd();
         }
     }
 
@@ -705,8 +769,39 @@ public final class PvzMode {
             return;
         }
         player.setGameMode(GameMode.SPECTATOR);
-        player.sendMessage(ChatColor.RED + "【PVZ】你已阵亡，本局不会复活，请以旁观者身份观战。");
+        player.sendMessage(ChatColor.RED + "【PVZ】你已阵亡，本局不会复活，观战中；游戏结束约 10 秒后返回大厅。");
         decrementAlive(player);
+        // 防呆：若因任何边缘情况未能触发淘汰判定，确保最后一名玩家死亡时结束游戏。
+        if (running && noAlivePlayersLeft()) {
+            endGameInternal(null, false);
+        }
+    }
+
+    /** 是否所有路都没有存活玩家（最后一名玩家死亡时的结束兜底）。 */
+    private boolean noAlivePlayersLeft() {
+        for (PvzLane lane : lanes.values()) {
+            if (!lane.eliminated() && lane.alivePlayers() > 0) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** 死亡玩家的观战重生点：本路游玩场地（玩家出生点），绝不落在大厅/世界出生点。 */
+    public Location respawnLocation(Player player) {
+        String laneId = playerLane.get(player.getUniqueId());
+        if (laneId != null) {
+            PvzLane lane = lanes.get(laneId);
+            if (lane != null) {
+                World world = Bukkit.getWorld(lane.world());
+                if (world != null) {
+                    Location sp = lane.playerSpawn();
+                    return new Location(world, sp.getX() + 0.5, sp.getY(), sp.getZ() + 0.5);
+                }
+            }
+        }
+        // 兜底：留在死亡点（场上）观战。
+        return player.getLocation();
     }
 
     /** 监听器入口：PVZ 玩家中途退出 → 视同阵亡。 */
@@ -714,6 +809,9 @@ public final class PvzMode {
         if (!isPlaying(player)) {
             return;
         }
+        // 中途退出视同阵亡：清掉职业装备，防止游戏物品残留到下次上线/游戏结束。
+        player.getInventory().clear();
+        player.getEnderChest().clear();
         pvzPlayers.remove(player.getUniqueId());
         playerClass.remove(player.getUniqueId());
         String laneId = playerLane.remove(player.getUniqueId());
