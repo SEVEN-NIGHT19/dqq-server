@@ -97,7 +97,6 @@ public final class GiantZombie extends Monster {
                     new AxisAngle4f()
                 )
             );
-            e.setRotation(0, 90);
         });
         zombieInstances.put(zombie, new ZombieInstance(this, zombie, axe));
 
@@ -170,7 +169,7 @@ public final class GiantZombie extends Monster {
         private final Zombie zombie;
         private final ItemDisplay axe;
         private boolean attacking;
-        private BukkitTask animationTask;
+        private BukkitTask animationTask; // TODO
         private BukkitTask attackTask;
 
         public ZombieInstance(GiantZombie monster, Zombie zombie, ItemDisplay axe) {
@@ -182,28 +181,31 @@ public final class GiantZombie extends Monster {
         public void attack() {
             attacking = true;
             axe.setInterpolationDuration(15);
+            axe.setInterpolationDelay(0);
             axe.setTransformation(
                 new Transformation(
                     new Vector3f(-0.8f, 1.5f, 0.925f),
-                    new AxisAngle4f(-0.63667f, 0f, 0f, 0.77111f),
+                    new AxisAngle4f(),
                     new Vector3f(3f, 3f, 3f),
-                    new AxisAngle4f()
+                    new AxisAngle4f(-0.63667f, 0f, 0f, 0.77111f)
                 )
             );
 
             animationTask = Bukkit.getScheduler().runTaskLater(monster.plugin, () -> {
                 axe.setInterpolationDuration(2);
+                axe.setInterpolationDelay(0);
                 axe.setTransformation(
                     new Transformation(
                         new Vector3f(-0.8f, 1.5f, 2.925f),
-                        new AxisAngle4f(-0.56165f, 0f, 0f, 0.82737f),
+                        new AxisAngle4f(),
                         new Vector3f(3f, 3f, 3f),
-                        new AxisAngle4f()
+                        new AxisAngle4f(0.56165f, 0f, 0f, 0.82737f)
                     )
                 );
 
                 animationTask = Bukkit.getScheduler().runTaskLater(monster.plugin, () -> {
                     axe.setInterpolationDuration(10);
+                    axe.setInterpolationDelay(0);
                     axe.setTransformation(
                         new Transformation(
                             new Vector3f(-0.8f, 0, 2.425f),
@@ -219,6 +221,7 @@ public final class GiantZombie extends Monster {
             attackTask = Bukkit.getScheduler().runTaskLater(monster.plugin, () -> {
                 DamageSource source = DamageSource.builder(DamageType.MOB_ATTACK)
                     .withCausingEntity(zombie)
+                    .withDirectEntity(zombie)
                     .build();
                 getPlayersInAttackRange(zombie).forEach(p -> p.damage(30, source));
             }, 16);
@@ -237,6 +240,7 @@ public final class GiantZombie extends Monster {
             }
             attacking = false;
             axe.setInterpolationDuration(0);
+            axe.setInterpolationDelay(0);
             axe.setTransformation(
                 new Transformation(
                     new Vector3f(-0.8f, 0, 2.425f),
@@ -264,6 +268,7 @@ public final class GiantZombie extends Monster {
         ZombieInstance ins = zombieInstances.get(zombie);
         if (ins != null) {
             ins.axe.teleport(event.getTo());
+            ins.axe.setRotation(zombie.getBodyYaw(), 0);
         }
     }
 }
