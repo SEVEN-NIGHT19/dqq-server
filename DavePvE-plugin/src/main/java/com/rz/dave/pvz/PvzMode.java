@@ -7,6 +7,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.World;
 import org.bukkit.boss.BarColor;
@@ -23,9 +24,18 @@ import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.Plugin;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.scoreboard.DisplaySlot;
 import org.bukkit.scoreboard.Objective;
+import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeInstance;
+import org.bukkit.entity.BlockDisplay;
+import org.bukkit.entity.Snowball;
+import org.bukkit.util.Transformation;
+import org.joml.AxisAngle4f;
+import org.joml.Vector3f;
 import org.bukkit.scoreboard.Scoreboard;
 
 import java.util.ArrayList;
@@ -46,13 +56,16 @@ import java.util.UUID;
  * - 五条数字路（one~five，显示 1路~5路），与四色队伍完全解耦；一路 = 一个队伍，
  *   每队最多 5 名玩家（默认 pvz.players-per-lane）共同守这一条路，一局上限 5×5=25 人；
  *   分路按顺序优先凑满前面的队伍，超出上限的玩家本局不进入；本模式不能中途加入；
- * - 玩家开局随机职业（剑士/弓箭手，可重复），死亡转观察者不复活；
+ * - 玩家开局随机职业（机枪射手/寒冰射手/坚果，可重复），死亡转观察者不复活；
+ * - 玩家默认血量 40（10 颗红心 × 4？不——40 点即 20 颗红心）；坚果职业 120 点血量、只受 10%
+ *   伤害、体型 1.5 倍（游戏结束恢复）；护甲均为染色皮革套且无限耐久；
  * - PVZ 玩家默认无法自然回血（清空饱和度 + 拦截自然回血事件），后续由职业机制回血；
  * - PVZ 怪物默认免疫击退（拦截 EntityKnockbackEvent），后续由其他机制代替击退；
  * - 每路基地生命（默认 10），怪物走到路终点扣 1 点，归零该路淘汰；
  * - 一路全员阵亡即淘汰；坚持到其他所有路失败即获胜；
  * - 开局只有一路有玩家 → 正常开始，全员阵亡才结束；
- * - 主路怪物只做「盲盒僵尸」，死亡后随机召唤原版僵尸 / 巨人僵尸 / 苦力怕（均不掉落、不惧阳光）；
+ * - 主路怪物只做「盲盒僵尸」（固定 25 点血），死亡后随机召唤：50% 苦力怕 / 20% 普通僵尸 /
+ *   10% 巨人僵尸 / 10% 路障僵尸 / 10% 铁桶僵尸（均不掉落、不惧阳光，召唤不播报）；
  * - 波次无限，难度随时间递增；与经典模式可同时运行。
  */
 public final class PvzMode {
@@ -86,10 +99,39 @@ public final class PvzMode {
     private int spawnIntervalTicksStep = 10;      // 每波缩短
     private int spawnsPerWaveBase = 3;            // 第 1 波每路总量
     private int spawnsPerWaveGrowth = 1;          // 每波 +1
-    private double monsterHealthBase = 20.0;
-    private double monsterHealthGrowth = 2.0;
     private double monsterAttackMultiplier = 0.5;
     private int playersPerLane = DEFAULT_PLAYERS_PER_LANE; // 每条路（每队）玩家上限
+
+    // ---- RPRZ 装备与数值常量 ----
+    public static final double BLIND_BOX_HEALTH = 25.0;       // 盲盒僵尸固定血量
+    public static final double PLAYER_BASE_HEALTH = 40.0;     // RPRZ 玩家默认血量（20 颗红心）
+    public static final double WALLNUT_HEALTH = 120.0;        // 坚果血量
+    public static final double WALLNUT_DAMAGE_RATIO = 0.10;   // 坚果所受伤害比例
+    public static final double WALLNUT_SCALE = 1.5;           // 坚果体型倍数（结束恢复 1.0）
+    public static final long SHOOTER_COOLDOWN_MS = 1400L;     // 射手攻击冷却 1.4 秒
+    public static final double SHOOTER_BULLET_DAMAGE = 2.0;   // 每发子弹伤害
+    public static final double SHOOTER_BULLET_SPEED = 1.8;    // 子弹基础速度
+    public static final int MACHINE_BURST_COUNT = 4;          // 机枪射手一次连发数
+    public static final int ICE_BURST_COUNT = 2;              // 寒冰射手一次连发数
+    public static final double ICICLE_CHANCE = 0.10;          // 每次射击额外冰棱概率 10%
+    public static final double ICICLE_DAMAGE = 4.0;           // 冰棱穿透伤害
+    public static final double ICICLE_SCALE = 0.5;            // 冰棱模型为 0.5 倍方块
+    public static final double ICICLE_SPEED_MULTIPLIER = 1.5; // 冰棱弹速倍数
+    public static final int ICICLE_MAX_TICKS = 100;           // 冰棱最长飞行 5 秒
+    public static final int ICE_SLOW_DURATION = 200;          // 缓慢三时长 10 秒
+    public static final int ICE_SLOW_AMPLIFIER = 2;           // 缓慢等级 3（amplifier 2）
+    public static final int ICE_FREEZE_TICKS = 36;            // 冻结 1.8 秒
+    public static final double ICE_FREEZE_BONUS = 2.0;        // 已有缓慢 → 冻结时的额外伤害
+    public static final double ICE_FROZEN_BONUS = 4.0;        // 正在冻结 → 重置冻结时的额外伤害
+
+    private final NamespacedKey shooterKey;      // 武器标记（string: machine/ice）
+    private final NamespacedKey bulletKey;       // PVZ 子弹标记（byte）
+    private final NamespacedKey bulletKindKey;   // 子弹类型（string: machine/ice）
+    private final NamespacedKey bulletDamageKey; // 子弹伤害（double）
+    private final NamespacedKey bulletOwnerKey;  // 子弹发射者 UUID（string）
+    private final Map<UUID, Long> shooterCooldowns = new HashMap<>();
+    private final Map<UUID, Long> frozenUntil = new HashMap<>(); // 怪物 UUID → 冻结到期 tick
+    private final Map<UUID, Set<UUID>> icicleHits = new HashMap<>();
 
     private final Map<String, PvzLane> lanes = new LinkedHashMap<>();
     private final Set<UUID> pvzReady = new java.util.LinkedHashSet<>();
@@ -113,6 +155,11 @@ public final class PvzMode {
         this.plugin = plugin;
         this.manager = manager;
         this.laneKey = new NamespacedKey(plugin, "pvz_lane");
+        this.shooterKey = new NamespacedKey(plugin, "pvz_shooter");
+        this.bulletKey = new NamespacedKey(plugin, "pvz_bullet");
+        this.bulletKindKey = new NamespacedKey(plugin, "pvz_bullet_kind");
+        this.bulletDamageKey = new NamespacedKey(plugin, "pvz_bullet_damage");
+        this.bulletOwnerKey = new NamespacedKey(plugin, "pvz_bullet_owner");
         for (String id : LANE_IDS) {
             lanes.put(id, new PvzLane(id, LANE_DISPLAYS.getOrDefault(id, id), baseHealth));
         }
@@ -189,8 +236,6 @@ public final class PvzMode {
         spawnIntervalTicksStep = cfg.getInt("pvz.spawn-interval-ticks-step", 10);
         spawnsPerWaveBase = cfg.getInt("pvz.spawns-per-wave-base", 3);
         spawnsPerWaveGrowth = cfg.getInt("pvz.spawns-per-wave-growth", 1);
-        monsterHealthBase = cfg.getDouble("pvz.monster-health-base", 20.0);
-        monsterHealthGrowth = cfg.getDouble("pvz.monster-health-growth", 2.0);
         monsterAttackMultiplier = cfg.getDouble("pvz.monster-attack-multiplier", 0.5);
         playersPerLane = Math.max(1, cfg.getInt("pvz.players-per-lane", DEFAULT_PLAYERS_PER_LANE));
         ConfigurationSection sec = cfg.getConfigurationSection("pvz.lanes");
@@ -323,10 +368,6 @@ public final class PvzMode {
         return 3 + wave * 1;
     }
 
-    public static double monsterHealth(int wave) {
-        return 20.0 + wave * 2.0;
-    }
-
     public static int spawnIntervalTicks(int wave) {
         return Math.max(20, 160 - wave * 10);
     }
@@ -410,11 +451,27 @@ public final class PvzMode {
                 manager.setPvzPlayer(p.getUniqueId(), true);
                 p.getInventory().clear();
                 p.getEnderChest().clear();
+                // 职业数值：默认 40 点血；坚果 120 点血 + 1.5 倍体型
+                boolean wallnut = clazz == PvzClass.WALLNUT;
+                p.setMaxHealth(wallnut ? WALLNUT_HEALTH : PLAYER_BASE_HEALTH);
+                p.setHealth(p.getMaxHealth());
+                if (wallnut) {
+                    AttributeInstance scaleAttr = p.getAttribute(Attribute.SCALE);
+                    if (scaleAttr != null) {
+                        scaleAttr.setBaseValue(WALLNUT_SCALE);
+                    }
+                }
                 for (ItemStack item : clazz.createKit()) {
                     p.getInventory().addItem(item);
                 }
+                ItemStack[] armor = clazz.createArmor();
+                if (armor.length > 0) {
+                    p.getInventory().setArmorContents(armor);
+                }
+                if (clazz.isShooter()) {
+                    markShooterWeapon(p, clazz);
+                }
                 p.setGameMode(GameMode.ADVENTURE);
-                p.setHealth(p.getMaxHealth());
                 p.setFoodLevel(20);
                 p.setSaturation(20);
                 p.clearActivePotionEffects();
@@ -552,6 +609,9 @@ public final class PvzMode {
         pvzPlayers.clear();
         playerClass.clear();
         playerLane.clear();
+        shooterCooldowns.clear();
+        frozenUntil.clear();
+        icicleHits.clear();
         for (PvzLane lane : lanes.values()) {
             lane.reset(baseHealth);
         }
@@ -686,12 +746,12 @@ public final class PvzMode {
                 (Math.random() - 0.5) * 2.0, 0, (Math.random() - 0.5) * 2.0);
         MonsterManager.spawn(MonsterManager.MonsterType.BLIND_BOX_ZOMBIE, world, loc,
                 new SpawnContext(lane.id(), laneKey,
-                        monsterHealth(waveIndex), monsterAttackMultiplier));
+                        BLIND_BOX_HEALTH, monsterAttackMultiplier));
     }
 
     /**
-     * 盲盒僵尸死亡 → 随机召唤原版僵尸、巨人僵尸或苦力怕（均为 PVZ 独立标签怪物；
-     * 概率 50% 苦力怕 / 25% 原版僵尸 / 25% 巨人僵尸）。
+     * 盲盒僵尸死亡 → 按概率随机召唤（50% 苦力怕 / 20% 普通僵尸 / 10% 巨人 /
+     * 10% 路障 / 10% 铁桶），不向聊天栏播报开出内容（怪多人多防刷屏）。
      */
     public void onBlindBoxDeath(Mob mob) {
         PvzLane lane = laneOfMob(mob);
@@ -703,23 +763,32 @@ public final class PvzMode {
         if (world == null) {
             return;
         }
-        double roll = Math.random();
+        MonsterManager.MonsterType type = pickSummonType(Math.random());
+        SpawnContext ctx = switch (type) {
+            case CONEHEAD_ZOMBIE -> new SpawnContext(lane.id(), laneKey,
+                    com.rz.dave.monster.ConeheadZombie.HEALTH, 1.0);
+            case BUCKETHEAD_ZOMBIE -> new SpawnContext(lane.id(), laneKey,
+                    com.rz.dave.monster.BucketheadZombie.HEALTH, 1.0);
+            default -> SpawnContext.basic(lane.id(), laneKey);
+        };
+        MonsterManager.spawn(type, world, loc, ctx);
+    }
+
+    /** 盲盒僵尸死亡召唤的随机类型（0..1 均匀随机数 → 类型；纯逻辑可单测）。 */
+    public static MonsterManager.MonsterType pickSummonType(double roll) {
         if (roll < 0.50) {
-            if (MonsterManager.spawn(MonsterManager.MonsterType.SUMMON_CREEPER, world, loc,
-                    SpawnContext.basic(lane.id(), laneKey)) != null) {
-                Bukkit.broadcastMessage(ChatColor.YELLOW + "【PVZ】盲盒僵尸死亡，召唤出一只原版苦力怕！");
-            }
-        } else if (roll < 0.75) {
-            if (MonsterManager.spawn(MonsterManager.MonsterType.PLAIN_ZOMBIE, world, loc,
-                    SpawnContext.basic(lane.id(), laneKey)) != null) {
-                Bukkit.broadcastMessage(ChatColor.YELLOW + "【PVZ】盲盒僵尸死亡，召唤出一只原版僵尸！");
-            }
-        } else {
-            if (MonsterManager.spawn(MonsterManager.MonsterType.GIANT_ZOMBIE, world, loc,
-                    SpawnContext.basic(lane.id(), laneKey)) != null) {
-                Bukkit.broadcastMessage(ChatColor.DARK_RED + "【PVZ】盲盒僵尸死亡，召唤出一只巨人僵尸！");
-            }
+            return MonsterManager.MonsterType.SUMMON_CREEPER;
         }
+        if (roll < 0.70) {
+            return MonsterManager.MonsterType.PLAIN_ZOMBIE;
+        }
+        if (roll < 0.80) {
+            return MonsterManager.MonsterType.GIANT_ZOMBIE;
+        }
+        if (roll < 0.90) {
+            return MonsterManager.MonsterType.CONEHEAD_ZOMBIE;
+        }
+        return MonsterManager.MonsterType.BUCKETHEAD_ZOMBIE;
     }
 
     public boolean isPvzMonster(Entity entity) {
@@ -734,6 +803,202 @@ public final class PvzMode {
         }
         PvzLane lane = laneOfMob(monster);
         return lane != null && lane.id().equals(playerLane.get(target.getUniqueId()));
+    }
+
+    // ---------------------------------------------------------------- 射手职业（机枪/寒冰）与冰冻
+
+    /** 是否为 PVZ 射手武器（手持物品带射击标记）。 */
+    public boolean isShooterWeapon(ItemStack stack) {
+        return stack != null && stack.hasItemMeta()
+                && stack.getItemMeta().getPersistentDataContainer()
+                        .has(shooterKey, PersistentDataType.STRING);
+    }
+
+    /** 是否为 PVZ 子弹（带 PVZ 子弹标记的投射物）。 */
+    public boolean isPvzBullet(org.bukkit.entity.Projectile projectile) {
+        return projectile instanceof Snowball
+                && projectile.getPersistentDataContainer().has(bulletKey, PersistentDataType.BYTE);
+    }
+
+    /** PVZ 子弹命中怪物：按子弹类型结算伤害/冰冻。 */
+    public void onShooterBulletHit(org.bukkit.entity.Projectile projectile, Mob mob) {
+        if (!(projectile instanceof Snowball ball) || mob == null || !isPvzMonster(mob)) {
+            return;
+        }
+        String kind = ball.getPersistentDataContainer().get(bulletKindKey, PersistentDataType.STRING);
+        Double damage = ball.getPersistentDataContainer().get(bulletDamageKey, PersistentDataType.DOUBLE);
+        String owner = ball.getPersistentDataContainer().get(bulletOwnerKey, PersistentDataType.STRING);
+        if (kind == null || damage == null || owner == null) {
+            return;
+        }
+        Player shooter = Bukkit.getPlayer(UUID.fromString(owner));
+        if (shooter == null) {
+            return;
+        }
+        if ("ice".equals(kind)) {
+            applyIceHit(mob, damage, shooter);
+        } else {
+            mob.damage(damage, shooter);
+        }
+    }
+
+    /**
+     * 寒冰命中结算：无缓慢 → 施加 10 秒缓慢三；已有缓慢三 → 冻结 1.8 秒 + 额外 2 伤害；
+     * 正在冻结 → 重置冻结 1.8 秒（不叠加）+ 额外 4 伤害。
+     */
+    private void applyIceHit(Mob mob, double damage, Player shooter) {
+        if (isFrozen(mob)) {
+            freeze(mob);
+            mob.damage(damage + ICE_FROZEN_BONUS, shooter);
+        } else if (mob.hasPotionEffect(PotionEffectType.SLOWNESS)) {
+            freeze(mob);
+            mob.damage(damage + ICE_FREEZE_BONUS, shooter);
+        } else {
+            mob.addPotionEffect(new PotionEffect(
+                    PotionEffectType.SLOWNESS, ICE_SLOW_DURATION, ICE_SLOW_AMPLIFIER));
+            mob.damage(damage, shooter);
+        }
+    }
+
+    private boolean isFrozen(Mob mob) {
+        Long until = frozenUntil.get(mob.getUniqueId());
+        return until != null && until > Bukkit.getCurrentTick();
+    }
+
+    /** 冻结怪物：停止 AI 1.8 秒；重复冻结仅重置计时，不叠加。 */
+    private void freeze(Mob mob) {
+        long until = Bukkit.getCurrentTick() + ICE_FREEZE_TICKS;
+        frozenUntil.put(mob.getUniqueId(), until);
+        mob.setAI(false);
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (mob.isValid() && until == frozenUntil.getOrDefault(mob.getUniqueId(), -1L)) {
+                mob.setAI(true);
+                frozenUntil.remove(mob.getUniqueId());
+            }
+        }, ICE_FREEZE_TICKS);
+    }
+
+    /** 右键发射器武器入口（机枪射手/寒冰射手）。 */
+    public void fireShooter(Player player) {
+        if (!isPlaying(player)) {
+            return;
+        }
+        ItemStack held = player.getInventory().getItemInMainHand();
+        String kind = held.getItemMeta() != null
+                ? held.getItemMeta().getPersistentDataContainer()
+                        .get(shooterKey, PersistentDataType.STRING)
+                : null;
+        if (kind == null) {
+            return;
+        }
+        boolean ice = "ice".equals(kind);
+        long now = System.currentTimeMillis();
+        long last = shooterCooldowns.getOrDefault(player.getUniqueId(), 0L);
+        long remaining = SHOOTER_COOLDOWN_MS - (now - last);
+        if (remaining > 0) {
+            long seconds = Math.max(1, (remaining + 999) / 1000);
+            player.sendActionBar(ChatColor.YELLOW + "【"
+                    + (ice ? "寒冰射手" : "机枪射手") + "】冷却中，还需 " + seconds + " 秒");
+            return;
+        }
+        shooterCooldowns.put(player.getUniqueId(), now);
+        int count = ice ? ICE_BURST_COUNT : MACHINE_BURST_COUNT;
+        for (int i = 0; i < count; i++) {
+            final int shot = i;
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (!player.isOnline() || !isPlaying(player)) {
+                    return;
+                }
+                spawnShooterBullet(player, ice);
+            }, shot * 4L);
+        }
+        if (ice && Math.random() < ICICLE_CHANCE) {
+            spawnIcicle(player);
+        }
+        player.sendActionBar(ChatColor.GREEN + "【" + (ice ? "寒冰射手" : "机枪射手") + "】已发射！");
+    }
+
+    /** 发射一颗普通子弹（机枪豌豆/冰弹）。 */
+    private void spawnShooterBullet(Player player, boolean ice) {
+        Location eye = player.getEyeLocation();
+        org.bukkit.util.Vector dir = player.getLocation().getDirection().clone().normalize();
+        eye.getWorld().spawn(eye, Snowball.class, s -> {
+            s.setItem(new ItemStack(ice ? Material.SNOWBALL : Material.SLIME_BALL));
+            s.setVelocity(dir.multiply(SHOOTER_BULLET_SPEED));
+            s.setShooter(player);
+            s.setGravity(false);
+            s.getPersistentDataContainer().set(bulletKey, PersistentDataType.BYTE, (byte) 1);
+            s.getPersistentDataContainer().set(bulletKindKey, PersistentDataType.STRING, ice ? "ice" : "machine");
+            s.getPersistentDataContainer().set(bulletDamageKey, PersistentDataType.DOUBLE, SHOOTER_BULLET_DAMAGE);
+            s.getPersistentDataContainer().set(bulletOwnerKey, PersistentDataType.STRING,
+                    player.getUniqueId().toString());
+        });
+    }
+
+    /** 寒冰射手 10% 概率的额外冰棱：0.5 倍浮冰方块、1.5 倍弹速、无限穿透。 */
+    private void spawnIcicle(Player player) {
+        Location eye = player.getEyeLocation();
+        BlockDisplay display = eye.getWorld().spawn(eye, BlockDisplay.class, d -> {
+            d.setBlock(Bukkit.createBlockData(Material.PACKED_ICE));
+            d.setTransformation(new Transformation(
+                    new Vector3f(), new AxisAngle4f(),
+                    new Vector3f((float) ICICLE_SCALE, (float) ICICLE_SCALE, (float) ICICLE_SCALE),
+                    new AxisAngle4f()));
+            d.setGravity(false);
+            d.setVelocity(player.getLocation().getDirection().clone().normalize()
+                    .multiply(SHOOTER_BULLET_SPEED * ICICLE_SPEED_MULTIPLIER));
+            d.setPersistent(true);
+        });
+        trackIcicle(display, player);
+    }
+
+    /** 冰棱飞行跟踪：每 tick 命中附近怪物（穿透标记防重复伤害），5 秒或失效后消失。 */
+    private void trackIcicle(BlockDisplay display, Player player) {
+        Set<UUID> hit = new java.util.HashSet<>();
+        icicleHits.put(display.getUniqueId(), hit);
+        long born = Bukkit.getCurrentTick();
+        Bukkit.getScheduler().runTaskTimer(plugin, task -> {
+            if (!display.isValid() || display.isDead()
+                    || Bukkit.getCurrentTick() - born > ICICLE_MAX_TICKS) {
+                display.remove();
+                icicleHits.remove(display.getUniqueId());
+                task.cancel();
+                return;
+            }
+            for (Entity entity : display.getWorld().getNearbyEntities(
+                    display.getLocation(), 1.5, 1.5, 1.5)) {
+                if (!(entity instanceof Mob mob) || !isPvzMonster(mob)
+                        || hit.contains(mob.getUniqueId())) {
+                    continue;
+                }
+                hit.add(mob.getUniqueId());
+                applyIceHit(mob, ICICLE_DAMAGE, player);
+            }
+        }, 1L, 1L);
+    }
+
+    /** 带甲僵尸破甲：血量跌破阈值时摘掉帽子（路障/铁桶僵尸）。 */
+    public void maybeBreakArmor(Mob mob) {
+        if (!mob.getScoreboardTags().contains(MonsterManager.TAG_ARMORED)) {
+            return;
+        }
+        if (mob.getHealth() >= com.rz.dave.monster.ConeheadZombie.ARMOR_BREAK_HP) {
+            return;
+        }
+        if (mob.getEquipment() != null && mob.getEquipment().getHelmet() != null) {
+            mob.getEquipment().setHelmet(null);
+        }
+    }
+
+    /** 开局为射手职业的武器打上射击标记。 */
+    private void markShooterWeapon(Player player, PvzClass clazz) {
+        for (ItemStack item : player.getInventory().getContents()) {
+            if (item != null && item.getType() == Material.DISPENSER) {
+                item.editMeta(meta -> meta.getPersistentDataContainer().set(
+                        shooterKey, PersistentDataType.STRING,
+                        clazz == PvzClass.ICE_SHOOTER ? "ice" : "machine"));
+            }
+        }
     }
 
     /** 监听器入口：PVZ 怪物死亡（清掉落；盲盒僵尸额外触发召唤）。 */
@@ -889,10 +1154,17 @@ public final class PvzMode {
         playerClass.remove(player.getUniqueId());
         String laneId = playerLane.remove(player.getUniqueId());
         manager.setPvzPlayer(player.getUniqueId(), false);
+        shooterCooldowns.remove(player.getUniqueId());
         player.getInventory().clear();
         player.getEnderChest().clear();
+        // 恢复玩家常规数值：血量 20、体型 1.0（坚果 1.5 倍体型必须还原）
+        player.setMaxHealth(20.0);
+        player.setHealth(20.0);
+        AttributeInstance scale = player.getAttribute(Attribute.SCALE);
+        if (scale != null) {
+            scale.setBaseValue(1.0);
+        }
         player.setGameMode(GameMode.ADVENTURE);
-        player.setHealth(player.getMaxHealth());
         player.setFoodLevel(20);
         player.clearActivePotionEffects();
         player.setScoreboard(Bukkit.getScoreboardManager().getMainScoreboard());

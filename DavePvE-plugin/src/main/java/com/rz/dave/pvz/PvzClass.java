@@ -1,38 +1,46 @@
 package com.rz.dave.pvz;
-import com.rz.dave.DaveManager;
 
 import org.bukkit.ChatColor;
+import org.bukkit.Color;
 import org.bukkit.Material;
-import org.bukkit.enchantments.Enchantment;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.inventory.meta.LeatherArmorMeta;
 
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * PVZ 模式职业。目前两种：剑士（铁剑）/ 弓箭手（弓 + 无限附魔 + 1 支箭）。
- * 严格按需求：裸装单武器，无护甲无食物；PVZ 模式无经济/商店/技能。
+ * PVZ（随机植物对战随机僵尸）模式职业。
+ *
+ * <p>武器均为 Dispenser 造型的发射器，射击参数（伤害/冷却/冰系特效）统一集中在
+ * {@link PvzMode}，本类只负责外观（武器/护甲）与职业标签；
+ * 护甲一律为对应颜色的皮革套装，并由模式统一设置为无限耐久（PVZ 模式护甲默认不损耗）。
  */
 public enum PvzClass {
-    SWORDSMAN("剑士", Material.IRON_SWORD, false),
-    ARCHER("弓箭手", Material.BOW, true);
+    MACHINE_GUNNER("机枪射手", PvzClassArmor.LIME),
+    ICE_SHOOTER("寒冰射手", PvzClassArmor.LIGHT_BLUE),
+    WALLNUT("坚果", PvzClassArmor.BROWN);
 
     private final String display;
-    private final Material weapon;
-    private final boolean ranged;
+    private final PvzClassArmor armor;
 
-    PvzClass(String display, Material weapon, boolean ranged) {
+    PvzClass(String display, PvzClassArmor armor) {
         this.display = display;
-        this.weapon = weapon;
-        this.ranged = ranged;
+        this.armor = armor;
     }
 
     public String displayName() {
         return display;
     }
 
-    public boolean isRanged() {
-        return ranged;
+    /** 是否为发射器职业（手持武器右键射击）。 */
+    public boolean isShooter() {
+        return this != WALLNUT;
+    }
+
+    /** 是否有武器（坚果没有武器）。 */
+    public boolean hasWeapon() {
+        return isShooter();
     }
 
     /** 开局随机职业，允许重复。 */
@@ -46,19 +54,47 @@ public enum PvzClass {
         return classes[Math.floorMod(index, classes.length)];
     }
 
-    /** 构造该职业的整套物品（只有武器本身，弓箭手附带 1 支箭配合无限附魔）。 */
+    /** 构造该职业的整套物品（发射器武器；坚果无武器）。PDC 射击标记由 PvzMode 开局时补充。 */
     public ItemStack[] createKit() {
-        ItemStack main = new ItemStack(weapon);
+        if (this == WALLNUT) {
+            return new ItemStack[0];
+        }
+        ItemStack main = new ItemStack(Material.DISPENSER);
         ItemMeta meta = main.getItemMeta();
-        meta.setItemName(ChatColor.AQUA + display + (ranged ? "之弓" : "之剑"));
+        meta.setItemName(ChatColor.AQUA + display);
         meta.setUnbreakable(true);
-        if (ranged) {
-            meta.addEnchant(Enchantment.INFINITY, 1, true);
-        }
         main.setItemMeta(meta);
-        if (ranged) {
-            return new ItemStack[]{main, new ItemStack(Material.ARROW, 1)};
-        }
         return new ItemStack[]{main};
+    }
+
+    /** 该职业的护甲（对应颜色染色皮革套，无限耐久）。 */
+    public ItemStack[] createArmor() {
+        ItemStack helmet = dyed(Material.LEATHER_HELMET);
+        ItemStack chest = dyed(Material.LEATHER_CHESTPLATE);
+        ItemStack legs = dyed(Material.LEATHER_LEGGINGS);
+        ItemStack boots = dyed(Material.LEATHER_BOOTS);
+        return new ItemStack[]{boots, legs, chest, helmet};
+    }
+
+    private ItemStack dyed(Material piece) {
+        ItemStack stack = new ItemStack(piece);
+        LeatherArmorMeta meta = (LeatherArmorMeta) stack.getItemMeta();
+        meta.setColor(armor.color);
+        meta.setUnbreakable(true);
+        stack.setItemMeta(meta);
+        return stack;
+    }
+
+    /** 各职业护甲染色（对应染料色：浅绿 / 浅蓝 / 棕）。 */
+    private enum PvzClassArmor {
+        LIME(Color.fromRGB(0x7FCC19)),
+        LIGHT_BLUE(Color.fromRGB(0x3AB3DA)),
+        BROWN(Color.fromRGB(0x835432));
+
+        private final Color color;
+
+        PvzClassArmor(Color color) {
+            this.color = color;
+        }
     }
 }
