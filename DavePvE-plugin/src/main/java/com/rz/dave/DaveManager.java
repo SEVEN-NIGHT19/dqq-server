@@ -1,6 +1,7 @@
 package com.rz.dave;
 import com.rz.dave.team.TeamChestManager;
 import com.rz.dave.pvz.PvzMode;
+import com.rz.dave.monster.MonsterManager;
 import com.rz.dave.shop.ShopItem;
 import com.rz.dave.shop.ShopCurrency;
 import com.rz.dave.menu.EquipmentCatalog;
@@ -180,6 +181,7 @@ public final class DaveManager {
             "green", "绿队");
 
     private final Plugin plugin;
+    private final MonsterManager monsterManager;
     private final NamespacedKey ownerTeamKey;
     private static NamespacedKey oneShotAxeKey;
     private static NamespacedKey windMaceKey;
@@ -348,8 +350,9 @@ public final class DaveManager {
     private record BossAttacker(UUID attackerId, long timestamp) {
     }
 
-    public DaveManager(Plugin plugin) {
+    public DaveManager(Plugin plugin, MonsterManager monsterManager) {
         this.plugin = plugin;
+        this.monsterManager = monsterManager;
         this.ownerTeamKey = new NamespacedKey(plugin, "owner_team");
         DaveManager.oneShotAxeKey = new NamespacedKey(plugin, "one_shot_axe");
         DaveManager.windMaceKey = new NamespacedKey(plugin, "wind_mace");
@@ -1664,12 +1667,16 @@ public final class DaveManager {
         wolfRideTask = Bukkit.getScheduler().runTaskTimer(plugin, this::tickWolfAggro, 0L, 20L);
         shooterHealTask = Bukkit.getScheduler().runTaskTimer(plugin, this::tickShooterHeal, 0L, 100L);
         refreshBossBars();
-        pvzMode = new PvzMode(plugin, this);
+        pvzMode = new PvzMode(plugin, this, monsterManager);
         pvzMode.enable();
     }
 
     public PvzMode pvzMode() {
         return pvzMode;
+    }
+
+    public MonsterManager monsterManager() {
+        return monsterManager;
     }
 
     public boolean isPvzPlayer(UUID uuid) {

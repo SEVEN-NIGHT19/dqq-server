@@ -5,18 +5,19 @@ import org.bukkit.World;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Zombie;
 import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.plugin.Plugin;
 
 /**
  * 召唤系原版僵尸（盲盒僵尸死亡后的产物）：PVZ 标签、昼间不燃，保持原版外形。
  */
 public final class NormalZombie extends Monster {
 
-    public NormalZombie(SpawnContext context) {
-        super(context);
+    public NormalZombie(Plugin plugin) {
+        super(plugin);
     }
 
     @Override
-    public LivingEntity spawn(World world, Location loc) {
+    public LivingEntity onSpawn(World world, Location loc, SpawnContext context) {
         return world.spawn(loc, Zombie.class, z -> {
             z.setBaby(false);
             z.setCanPickupItems(false);
@@ -26,7 +27,8 @@ public final class NormalZombie extends Monster {
             z.addScoreboardTag(MonsterManager.TAG_SUMMON);
             z.setRemoveWhenFarAway(false);
             z.setPersistent(true);
-            z.getPersistentDataContainer().set(laneKey(), PersistentDataType.STRING, laneId());
+            z.getPersistentDataContainer().set(context.laneKey(), PersistentDataType.STRING,
+                    context.laneId());
         });
     }
 }

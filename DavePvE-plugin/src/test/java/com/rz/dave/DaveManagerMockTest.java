@@ -1,5 +1,6 @@
 package com.rz.dave;
 import com.rz.dave.DaveManager;
+import com.rz.dave.monster.MonsterManager;
 import com.rz.dave.pvz.PvzMode;
 import com.rz.dave.shop.ShopItem;
 import com.rz.dave.listener.GameListener;
@@ -46,7 +47,7 @@ class DaveManagerMockTest {
     void setUp() throws Exception {
         server = MockBukkit.mock();
         Plugin plugin = newBarePlugin();
-        manager = new DaveManager(plugin);
+        manager = new DaveManager(plugin, new MonsterManager(plugin));
         listener = new GameListener(manager);
     }
 

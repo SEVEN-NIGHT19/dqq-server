@@ -1,5 +1,6 @@
 package com.rz.dave;
 import com.rz.dave.DaveManager;
+import com.rz.dave.monster.MonsterManager;
 import com.rz.dave.pvz.PvzListener;
 import com.rz.dave.pvz.PvzMode;
 
@@ -52,8 +53,8 @@ class PvzModeFlowTest {
         server = MockBukkit.mock();
         server.addSimpleWorld("world");
         plugin = newBarePlugin();
-        manager = new DaveManager(plugin);
-        pvz = new PvzMode(plugin, manager);
+        manager = new DaveManager(plugin, new MonsterManager(plugin));
+        pvz = new PvzMode(plugin, manager, manager.monsterManager());
         pvz.enable();
         // 配置全部 5 条数字路（world 世界，测试坐标）
         for (String id : PvzMode.LANE_IDS) {

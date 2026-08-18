@@ -1,22 +1,25 @@
 package com.rz.dave.monster;
 
+import org.bukkit.Bukkit;
 import org.bukkit.Location;
-import org.bukkit.NamespacedKey;
 import org.bukkit.World;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
+import org.bukkit.event.HandlerList;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.plugin.Plugin;
 
 import java.util.EnumMap;
 import java.util.Map;
 
 /**
- * 自定义怪物管理器：统一注册与生成自定义怪物。
+ * 自定义怪物管理器：由插件主类实例化，统一注册与生成自定义怪物。
  *
- * <p>每种怪物继承 {@link Monster} 抽象类，并在本类中通过
- * {@link #register(MonsterType, MonsterFactory)} 注册到类型注册表；
- * 生成时按 {@link MonsterType} 从注册表取出对应怪物类实例化并生成实体，
- * 便于统一维护体型、标签、血量与攻击等属性。
+ * <p>注册表直接存储「怪物类型 → 怪物实例」的单例映射：每种怪物在管理器构造时
+ * 实例化一次，全局仅有一个实例（单例）；由插件主类调用 {@link #enableAll()}
+ * 统一注册为 Bukkit 监听器。生成实体时通过
+ * {@link #spawn(MonsterType, World, Location, SpawnContext)} 传入当次的
+ * 路线/波次上下文，便于统一维护体型、标签、血量与攻击等属性。
  *
  * <p>掉落规则：所有带 {@link #TAG_MONSTER} 标签的怪物死亡时由
  * PVZ 死亡监听统一清空掉落物（击杀无任何掉落）。
@@ -29,13 +32,6 @@ public final class MonsterManager {
     public static final String TAG_BLINDBOX = "pvz_blindbox";
     /** 盲盒僵尸死亡后召唤出的怪物标签。 */
     public static final String TAG_SUMMON = "pvz_summon";
-
-    /** 巨人僵尸：体型为原版僵尸的倍数（1.21 实体 scale 属性）。 */
-    public static final double GIANT_ZOMBIE_SCALE = 4.0;
-    /** 巨人僵尸：血量按原版僵尸血量放大倍数。 */
-    public static final double GIANT_ZOMBIE_HEALTH_MULTIPLIER = 4.0;
-    /** 原版僵尸基础血量（用于巨人僵尸血量计算）。 */
-    public static final double BASE_ZOMBIE_HEALTH = 20.0;
 
     /** 怪物种类注册表（供生成入口与后续扩展使用）。 */
     public enum MonsterType {
@@ -55,47 +51,56 @@ public final class MonsterManager {
         }
     }
 
-    /** 怪物工厂：根据生成上下文创建具体怪物实例（未生成实体）。 */
-    @FunctionalInterface
-    public interface MonsterFactory {
-        Monster create(SpawnContext context);
-    }
+    /** 怪物类型 → 怪物实例 的单例注册表（每种类型全局仅一个实例）。 */
+    private final Map<MonsterType, Monster> registry = new EnumMap<>(MonsterType.class);
 
-    /** 怪物类型 → 怪物工厂 注册表。 */
-    private static final Map<MonsterType, MonsterFactory> REGISTRY = new EnumMap<>(MonsterType.class);
-
-    static {
-        // 统一注册所有怪物类，新增怪物在此登记后即可通过统一入口生成。
-        REGISTRY.put(MonsterType.BLIND_BOX_ZOMBIE, BlindBoxZombie::new);
-        REGISTRY.put(MonsterType.PLAIN_ZOMBIE, NormalZombie::new);
-        REGISTRY.put(MonsterType.GIANT_ZOMBIE, GiantZombie::new);
-        REGISTRY.put(MonsterType.SUMMON_CREEPER, DqqCreeper::new);
-    }
-
-    private MonsterManager() {
-    }
+    /** 插件实例：用于注册怪物监听器。 */
+    private final Plugin plugin;
 
     /**
-     * 注册自定义怪物：将怪物类型与工厂绑定，供统一入口生成。
-     * 已存在的类型会被覆盖。
+     * 由插件主类实例化：构造时创建所有怪物单例实例并放入注册表。
+     * 新增怪物在此登记后即可通过统一入口生成。
      */
-    public static void register(MonsterType type, MonsterFactory factory) {
-        REGISTRY.put(type, factory);
+    public MonsterManager(Plugin plugin) {
+        this.plugin = plugin;
+        register(MonsterType.BLIND_BOX_ZOMBIE, new BlindBoxZombie(plugin));
+        register(MonsterType.PLAIN_ZOMBIE, new NormalZombie(plugin));
+        register(MonsterType.GIANT_ZOMBIE, new GiantZombie(plugin));
+        register(MonsterType.SUMMON_CREEPER, new DqqCreeper(plugin));
     }
 
-    /** 按类型创建怪物实例（未生成实体），用于需要直接操作实例的场景。 */
-    public static Monster create(MonsterType type, SpawnContext context) {
-        MonsterFactory factory = REGISTRY.get(type);
-        if (factory == null) {
+    /** 注册怪物单例实例：放入注册表（实体移除时自动清理跟踪集合）。 */
+    private void register(MonsterType type, Monster monster) {
+        registry.put(type, monster);
+    }
+
+    public void enableAll() {
+        for (Monster monster : registry.values()) {
+            Bukkit.getPluginManager().registerEvents(monster, plugin);
+            monster.onEnable();
+        }
+    }
+
+    public void disableAll() {
+        for (Monster monster : registry.values()) {
+            HandlerList.unregisterAll(monster);
+            monster.onDisable();
+        }
+    }
+
+    /** 按类型获取怪物单例实例（构造时已创建，每种类型全局仅一个实例）。 */
+    public Monster monster(MonsterType type) {
+        Monster monster = registry.get(type);
+        if (monster == null) {
             throw new IllegalArgumentException("未注册的怪物类型: " + type);
         }
-        return factory.create(context);
+        return monster;
     }
 
     /** 统一生成入口：按注册的怪物类型生成实体。 */
-    public static LivingEntity spawn(MonsterType type, World world, Location loc,
-                                     SpawnContext context) {
-        return create(type, context).spawn(world, loc);
+    public LivingEntity spawn(MonsterType type, World world, Location loc,
+                              SpawnContext context) {
+        return monster(type).spawn(world, loc, context);
     }
 
     /** 判断实体是否为 PVZ 归属怪物（带 {@value #TAG_MONSTER} 标签）。 */

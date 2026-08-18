@@ -7,7 +7,9 @@ import org.bukkit.World;
 import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Zombie;
+import org.bukkit.event.entity.EntityRemoveEvent;
 import org.bukkit.plugin.Plugin;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,6 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -41,6 +44,7 @@ class MonsterManagerTest {
     private ServerMock server;
     private World world;
     private NamespacedKey laneKey;
+    private MonsterManager manager;
 
     @BeforeEach
     void setUp() {
@@ -48,6 +52,7 @@ class MonsterManagerTest {
         server.addSimpleWorld("world");
         world = server.getWorld("world");
         laneKey = new NamespacedKey(newBarePlugin(), "pvz_lane");
+        manager = new MonsterManager(newBarePlugin());
     }
 
     @AfterEach
@@ -55,12 +60,15 @@ class MonsterManagerTest {
         MockBukkit.unmock();
     }
 
-    /** 与 PvzModeFlowTest 相同的裸插件动态代理，额外提供空的 FileConfiguration。 */
+    /** 与 PvzModeFlowTest 相同的裸插件动态代理，额外提供空的 FileConfiguration 与 isEnabled=true。 */
     private static Plugin newBarePlugin() {
         return (Plugin) Proxy.newProxyInstance(
                 Plugin.class.getClassLoader(),
                 new Class<?>[]{Plugin.class},
                 (proxy, method, args) -> {
+                    if (method.getName().equals("isEnabled")) {
+                        return true;
+                    }
                     if (method.getName().equals("namespace")) {
                         return "testplugin";
                     }
@@ -100,9 +108,8 @@ class MonsterManagerTest {
         assertEquals("pvz_monster", MonsterManager.TAG_MONSTER);
         assertEquals("pvz_blindbox", MonsterManager.TAG_BLINDBOX);
         assertEquals("pvz_summon", MonsterManager.TAG_SUMMON);
-        assertEquals(4.0, MonsterManager.GIANT_ZOMBIE_SCALE, 0.001);
-        assertEquals(4.0, MonsterManager.GIANT_ZOMBIE_HEALTH_MULTIPLIER, 0.001);
-        assertEquals(20.0, MonsterManager.BASE_ZOMBIE_HEALTH, 0.001);
+        assertEquals(2.0, GiantZombie.GIANT_ZOMBIE_SCALE, 0.001);
+        assertEquals(4.0, GiantZombie.GIANT_ZOMBIE_HEALTH_MULTIPLIER, 0.001);
     }
 
     @Test
@@ -112,15 +119,24 @@ class MonsterManagerTest {
 
     @Test
     void registryCreatesRegisteredMonsterClasses() {
-        SpawnContext ctx = new SpawnContext("one", laneKey, 40.0, 0.5);
-        assertTrue(MonsterManager.create(MonsterManager.MonsterType.BLIND_BOX_ZOMBIE, ctx)
+        assertTrue(manager.monster(MonsterManager.MonsterType.BLIND_BOX_ZOMBIE)
                 instanceof BlindBoxZombie);
-        assertTrue(MonsterManager.create(MonsterManager.MonsterType.PLAIN_ZOMBIE, ctx)
+        assertTrue(manager.monster(MonsterManager.MonsterType.PLAIN_ZOMBIE)
                 instanceof NormalZombie);
-        assertTrue(MonsterManager.create(MonsterManager.MonsterType.GIANT_ZOMBIE, ctx)
+        assertTrue(manager.monster(MonsterManager.MonsterType.GIANT_ZOMBIE)
                 instanceof GiantZombie);
-        assertTrue(MonsterManager.create(MonsterManager.MonsterType.SUMMON_CREEPER, ctx)
+        assertTrue(manager.monster(MonsterManager.MonsterType.SUMMON_CREEPER)
                 instanceof DqqCreeper);
+    }
+
+    @Test
+    void monsterInstancesAreUniquePerType() {
+        assertSame(manager.monster(MonsterManager.MonsterType.BLIND_BOX_ZOMBIE),
+                manager.monster(MonsterManager.MonsterType.BLIND_BOX_ZOMBIE),
+                "同一类型应返回同一个实例");
+        assertSame(manager.monster(MonsterManager.MonsterType.SUMMON_CREEPER),
+                manager.monster(MonsterManager.MonsterType.SUMMON_CREEPER),
+                "同一类型应返回同一个实例");
     }
 
     // ---------------------------------------------------------------- MockBukkit 可执行
@@ -136,12 +152,41 @@ class MonsterManagerTest {
         assertFalse(MonsterManager.isPvzMonster(null));
     }
 
+    /** 生成一个不依赖 MockBukkit 受限 API 的测试怪（直接生成原版僵尸）。 */
+    private static Monster testMonster() {
+        return new Monster(newBarePlugin()) {
+            @Override
+            public LivingEntity onSpawn(World w, Location l, SpawnContext ctx) {
+                return w.spawn(l, Zombie.class);
+            }
+        };
+    }
+
+    @Test
+    void spawnTracksEntityInSpawnedSet() {
+        Monster monster = testMonster();
+        LivingEntity z = monster.spawn(world, loc(world),
+                new SpawnContext("one", laneKey, 40.0, 0.5));
+        assertNotNull(z, "匿名测试怪应生成成功");
+        assertTrue(monster.spawned().contains(z), "生成的实体应登记到跟踪集合");
+        assertEquals(1, monster.spawned().size());
+    }
+
+    @Test
+    void entityRemoveEventRemovesEntityFromSpawnedSet() {
+        Monster monster = testMonster();
+        LivingEntity z = monster.spawn(world, loc(world),
+                new SpawnContext("one", laneKey, 40.0, 0.5));
+        monster.onEntityRemove(new EntityRemoveEvent(z, EntityRemoveEvent.Cause.DEATH));
+        assertTrue(monster.spawned().isEmpty(), "实体移除事件后应从跟踪集合中删除");
+    }
+
     // ---------------------------------------------------------------- 生成类（MockBukkit 4.110 限制，@Disabled）
 
     @Test
     @Disabled("MockBukkit 4.110 未实现 setCanPickupItems/setShouldBurnInDay/setRemoveWhenFarAway")
     void blindBoxZombieHasPvzTagsAndIgnoresSunburn() {
-        Zombie z = (Zombie) MonsterManager.spawn(MonsterManager.MonsterType.BLIND_BOX_ZOMBIE,
+        Zombie z = (Zombie) manager.spawn(MonsterManager.MonsterType.BLIND_BOX_ZOMBIE,
                 world, loc(world), new SpawnContext("one", laneKey, 40.0, 0.5));
         assertNotNull(z, "盲盒僵尸应生成成功");
         assertTrue(z.getScoreboardTags().contains(MonsterManager.TAG_MONSTER));
@@ -156,7 +201,7 @@ class MonsterManagerTest {
     @Test
     @Disabled("MockBukkit 4.110 未实现 setCanPickupItems/setShouldBurnInDay/setRemoveWhenFarAway")
     void summonPlainZombieHasSummonTagAndIgnoresSunburn() {
-        Zombie z = (Zombie) MonsterManager.spawn(MonsterManager.MonsterType.PLAIN_ZOMBIE,
+        Zombie z = (Zombie) manager.spawn(MonsterManager.MonsterType.PLAIN_ZOMBIE,
                 world, loc(world), SpawnContext.basic("two", laneKey));
         assertNotNull(z, "召唤普通僵尸应生成成功");
         assertTrue(z.getScoreboardTags().contains(MonsterManager.TAG_MONSTER));
@@ -168,7 +213,7 @@ class MonsterManagerTest {
     @Test
     @Disabled("MockBukkit 4.110 未实现 setCanPickupItems/setShouldBurnInDay/setRemoveWhenFarAway")
     void giantZombieIsFourTimesScaleAndHealth() {
-        Zombie g = (Zombie) MonsterManager.spawn(MonsterManager.MonsterType.GIANT_ZOMBIE,
+        Zombie g = (Zombie) manager.spawn(MonsterManager.MonsterType.GIANT_ZOMBIE,
                 world, loc(world), SpawnContext.basic("three", laneKey));
         assertNotNull(g, "巨人僵尸应生成成功");
         AttributeInstance scale = g.getAttribute(Attribute.SCALE);
@@ -182,7 +227,7 @@ class MonsterManagerTest {
     @Test
     @Disabled("MockBukkit 4.110 未实现 setCanPickupItems/setShouldBurnInDay/setRemoveWhenFarAway")
     void summonCreeperHasPvzTags() {
-        org.bukkit.entity.Creeper c = (org.bukkit.entity.Creeper) MonsterManager.spawn(
+        org.bukkit.entity.Creeper c = (org.bukkit.entity.Creeper) manager.spawn(
                 MonsterManager.MonsterType.SUMMON_CREEPER, world, loc(world),
                 SpawnContext.basic("four", laneKey));
         assertNotNull(c, "召唤苦力怕应生成成功");

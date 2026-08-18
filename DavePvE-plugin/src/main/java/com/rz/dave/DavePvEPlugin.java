@@ -1,6 +1,7 @@
 package com.rz.dave;
 import com.rz.dave.command.DaveAdminCommand;
 import com.rz.dave.listener.GameListener;
+import com.rz.dave.monster.MonsterManager;
 import com.rz.dave.command.LobbyCommand;
 import com.rz.dave.command.OpMenuCommand;
 import com.rz.dave.command.PlayerMenuCommand;
@@ -9,11 +10,14 @@ import com.rz.dave.pvz.PvzListener;
 import org.bukkit.plugin.java.JavaPlugin;
 
 public final class DavePvEPlugin extends JavaPlugin {
+    private MonsterManager monsterManager;
     private DaveManager manager;
 
     @Override
     public void onEnable() {
-        manager = new DaveManager(this);
+        monsterManager = new MonsterManager(this);
+        monsterManager.enableAll();
+        manager = new DaveManager(this, monsterManager);
         manager.enable();
         getServer().getPluginManager().registerEvents(new GameListener(manager), this);
         if (manager.pvzMode() != null) {
@@ -42,6 +46,13 @@ public final class DavePvEPlugin extends JavaPlugin {
             manager.disable();
             manager = null;
         }
+        monsterManager.disableAll();
+        monsterManager = null;
         getLogger().info("DavePvE disabled");
+    }
+
+    /** 由插件主类实例化的怪物管理器（含所有怪物单例实例）。 */
+    public MonsterManager monsterManager() {
+        return monsterManager;
     }
 }
