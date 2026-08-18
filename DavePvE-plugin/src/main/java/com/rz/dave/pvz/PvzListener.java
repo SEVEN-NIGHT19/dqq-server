@@ -187,8 +187,10 @@ public final class PvzListener implements Listener {
         }
     }
 
-    /** PVZ 射手职业右键发射（机枪射手/寒冰射手）。 */
-    @EventHandler(ignoreCancelled = true)
+    /** PVZ 射手职业右键发射（机枪射手/寒冰射手）。
+     *  注意：不能 ignoreCancelled —— 右键空气事件可能被其他监听器（如菜单/保护）cancel，
+     *  与大模式一致，无论空气还是方块右键都照常发射。 */
+    @EventHandler
     public void onInteract(PlayerInteractEvent event) {
         Player player = event.getPlayer();
         if (!pvz.isPlaying(player)) {

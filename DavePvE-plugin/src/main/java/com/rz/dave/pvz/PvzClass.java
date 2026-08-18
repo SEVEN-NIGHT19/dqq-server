@@ -43,7 +43,10 @@ public enum PvzClass {
         return isShooter();
     }
 
-    /** 开局随机职业，允许重复。 */
+    /**
+     * 开局随机职业：每名玩家分配时独立调用一次（A 玩家的职业不影响 B 玩家），
+     * 从职业池中等概率随机一个（1/3），允许重复（连续同职业是正常随机现象）。
+     */
     public static PvzClass random() {
         return fromRandomIndex(ThreadLocalRandom.current().nextInt(values().length));
     }

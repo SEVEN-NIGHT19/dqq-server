@@ -102,26 +102,41 @@ class PvzModeTest {
     }
 
     @Test
+    void randomClassDistributionIsUniform() {
+        // 独立同分布验证：9000 次采样，每个职业占比应接近 1/3（阈值取 ±5% 防抖动）
+        int[] counts = new int[PvzClass.values().length];
+        int n = 9000;
+        for (int i = 0; i < n; i++) {
+            counts[PvzClass.random().ordinal()]++;
+        }
+        for (int count : counts) {
+            double ratio = (double) count / n;
+            assertTrue(ratio > 0.28 && ratio < 0.39,
+                    "职业分布应接近 1/3，实际 " + ratio);
+        }
+    }
+
+    @Test
     void blindBoxSummonDistribution() {
-        // 50% 苦力怕 / 20% 普通 / 10% 巨人 / 10% 路障 / 10% 铁桶
+        // 10% 苦力怕 / 22.5% 普通 / 22.5% 巨人 / 22.5% 路障 / 22.5% 铁桶
         assertEquals(com.rz.dave.monster.MonsterManager.MonsterType.SUMMON_CREEPER,
                 PvzMode.pickSummonType(0.0));
         assertEquals(com.rz.dave.monster.MonsterManager.MonsterType.SUMMON_CREEPER,
-                PvzMode.pickSummonType(0.4999));
+                PvzMode.pickSummonType(0.0999));
         assertEquals(com.rz.dave.monster.MonsterManager.MonsterType.PLAIN_ZOMBIE,
-                PvzMode.pickSummonType(0.5));
+                PvzMode.pickSummonType(0.1));
         assertEquals(com.rz.dave.monster.MonsterManager.MonsterType.PLAIN_ZOMBIE,
-                PvzMode.pickSummonType(0.6999));
+                PvzMode.pickSummonType(0.3249));
         assertEquals(com.rz.dave.monster.MonsterManager.MonsterType.GIANT_ZOMBIE,
-                PvzMode.pickSummonType(0.7));
+                PvzMode.pickSummonType(0.325));
         assertEquals(com.rz.dave.monster.MonsterManager.MonsterType.GIANT_ZOMBIE,
-                PvzMode.pickSummonType(0.7999));
+                PvzMode.pickSummonType(0.5499));
         assertEquals(com.rz.dave.monster.MonsterManager.MonsterType.CONEHEAD_ZOMBIE,
-                PvzMode.pickSummonType(0.8));
+                PvzMode.pickSummonType(0.55));
         assertEquals(com.rz.dave.monster.MonsterManager.MonsterType.CONEHEAD_ZOMBIE,
-                PvzMode.pickSummonType(0.8999));
+                PvzMode.pickSummonType(0.7749));
         assertEquals(com.rz.dave.monster.MonsterManager.MonsterType.BUCKETHEAD_ZOMBIE,
-                PvzMode.pickSummonType(0.9));
+                PvzMode.pickSummonType(0.775));
         assertEquals(com.rz.dave.monster.MonsterManager.MonsterType.BUCKETHEAD_ZOMBIE,
                 PvzMode.pickSummonType(0.9999));
     }

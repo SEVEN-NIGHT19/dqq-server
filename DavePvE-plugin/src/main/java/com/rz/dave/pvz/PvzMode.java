@@ -750,8 +750,8 @@ public final class PvzMode {
     }
 
     /**
-     * 盲盒僵尸死亡 → 按概率随机召唤（50% 苦力怕 / 20% 普通僵尸 / 10% 巨人 /
-     * 10% 路障 / 10% 铁桶），不向聊天栏播报开出内容（怪多人多防刷屏）。
+     * 盲盒僵尸死亡 → 按概率随机召唤（10% 苦力怕 / 22.5% 普通僵尸 / 22.5% 巨人 /
+     * 22.5% 路障 / 22.5% 铁桶），不向聊天栏播报开出内容（怪多人多防刷屏）。
      */
     public void onBlindBoxDeath(Mob mob) {
         PvzLane lane = laneOfMob(mob);
@@ -774,18 +774,20 @@ public final class PvzMode {
         MonsterManager.spawn(type, world, loc, ctx);
     }
 
-    /** 盲盒僵尸死亡召唤的随机类型（0..1 均匀随机数 → 类型；纯逻辑可单测）。 */
+    /** 盲盒僵尸死亡召唤的随机类型（0..1 均匀随机数 → 类型；纯逻辑可单测）。
+     *  每次召唤独立随机，概率：10% 苦力怕 / 22.5% 普通 / 22.5% 巨人 /
+     *  22.5% 路障 / 22.5% 铁桶。 */
     public static MonsterManager.MonsterType pickSummonType(double roll) {
-        if (roll < 0.50) {
+        if (roll < 0.10) {
             return MonsterManager.MonsterType.SUMMON_CREEPER;
         }
-        if (roll < 0.70) {
+        if (roll < 0.325) {
             return MonsterManager.MonsterType.PLAIN_ZOMBIE;
         }
-        if (roll < 0.80) {
+        if (roll < 0.55) {
             return MonsterManager.MonsterType.GIANT_ZOMBIE;
         }
-        if (roll < 0.90) {
+        if (roll < 0.775) {
             return MonsterManager.MonsterType.CONEHEAD_ZOMBIE;
         }
         return MonsterManager.MonsterType.BUCKETHEAD_ZOMBIE;
@@ -935,8 +937,11 @@ public final class PvzMode {
         });
     }
 
-    /** 寒冰射手 10% 概率的额外冰棱：0.5 倍浮冰方块、1.5 倍弹速、无限穿透。 */
+    /** 寒冰射手 10% 概率的额外冰棱：0.5 倍浮冰方块、1.5 倍弹速、无限穿透。
+     *  注意：BlockDisplay 的 velocity 不保证被服务器驱动（实测会停在原地），
+     *  因此不依赖 velocity，由 trackIcicle 每 tick 位移推进。 */
     private void spawnIcicle(Player player) {
+        org.bukkit.util.Vector dir = player.getLocation().getDirection().clone().normalize();
         Location eye = player.getEyeLocation();
         BlockDisplay display = eye.getWorld().spawn(eye, BlockDisplay.class, d -> {
             d.setBlock(Bukkit.createBlockData(Material.PACKED_ICE));
@@ -945,18 +950,18 @@ public final class PvzMode {
                     new Vector3f((float) ICICLE_SCALE, (float) ICICLE_SCALE, (float) ICICLE_SCALE),
                     new AxisAngle4f()));
             d.setGravity(false);
-            d.setVelocity(player.getLocation().getDirection().clone().normalize()
-                    .multiply(SHOOTER_BULLET_SPEED * ICICLE_SPEED_MULTIPLIER));
             d.setPersistent(true);
         });
-        trackIcicle(display, player);
+        trackIcicle(display, player, dir);
     }
 
-    /** 冰棱飞行跟踪：每 tick 命中附近怪物（穿透标记防重复伤害），5 秒或失效后消失。 */
-    private void trackIcicle(BlockDisplay display, Player player) {
+    /** 冰棱飞行跟踪：每 tick 位移推进（1.5 倍弹速，分 3 子步防穿透漏判），
+     *  命中附近怪物（穿透标记防重复伤害），5 秒或失效后消失。 */
+    private void trackIcicle(BlockDisplay display, Player player, org.bukkit.util.Vector dir) {
         Set<UUID> hit = new java.util.HashSet<>();
         icicleHits.put(display.getUniqueId(), hit);
         long born = Bukkit.getCurrentTick();
+        final double step = SHOOTER_BULLET_SPEED * ICICLE_SPEED_MULTIPLIER;
         Bukkit.getScheduler().runTaskTimer(plugin, task -> {
             if (!display.isValid() || display.isDead()
                     || Bukkit.getCurrentTick() - born > ICICLE_MAX_TICKS) {
@@ -965,14 +970,17 @@ public final class PvzMode {
                 task.cancel();
                 return;
             }
-            for (Entity entity : display.getWorld().getNearbyEntities(
-                    display.getLocation(), 1.5, 1.5, 1.5)) {
-                if (!(entity instanceof Mob mob) || !isPvzMonster(mob)
-                        || hit.contains(mob.getUniqueId())) {
-                    continue;
+            for (int s = 0; s < 3; s++) {
+                display.teleport(display.getLocation().add(dir.clone().multiply(step / 3.0)));
+                for (Entity entity : display.getWorld().getNearbyEntities(
+                        display.getLocation(), 1.5, 1.5, 1.5)) {
+                    if (!(entity instanceof Mob mob) || !isPvzMonster(mob)
+                            || hit.contains(mob.getUniqueId())) {
+                        continue;
+                    }
+                    hit.add(mob.getUniqueId());
+                    applyIceHit(mob, ICICLE_DAMAGE, player);
                 }
-                hit.add(mob.getUniqueId());
-                applyIceHit(mob, ICICLE_DAMAGE, player);
             }
         }, 1L, 1L);
     }
