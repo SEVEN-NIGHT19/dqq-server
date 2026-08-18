@@ -672,6 +672,11 @@ public final class PvzMode {
                 if (!mob.isValid()) {
                     continue;
                 }
+                // 破甲与灼烧的兜底（实机上事件路径不可靠）：每 tick 检查一次
+                maybeBreakArmor(mob);
+                if (mob.getFireTicks() > 0) {
+                    mob.setFireTicks(0);
+                }
                 PvzLane lane = laneOfMob(mob);
                 if (lane == null || !lane.isActive()) {
                     if (lane == null || lane.eliminated()) {
@@ -842,6 +847,8 @@ public final class PvzMode {
         } else {
             mob.damage(damage, shooter);
         }
+        // 伤害已结算（此时血量为新值），立即检查破甲，避免依赖后续事件
+        maybeBreakArmor(mob);
     }
 
     /**
@@ -985,7 +992,7 @@ public final class PvzMode {
         }, 1L, 1L);
     }
 
-    /** 带甲僵尸破甲：血量跌破阈值时摘掉帽子（路障/铁桶僵尸）。 */
+    /** 带甲僵尸破甲：血量跌破阈值时摘掉帽子（路障/铁桶僵尸）；用 AIR 而非 null 确保移除。 */
     public void maybeBreakArmor(Mob mob) {
         if (!mob.getScoreboardTags().contains(MonsterManager.TAG_ARMORED)) {
             return;
@@ -993,8 +1000,10 @@ public final class PvzMode {
         if (mob.getHealth() >= com.rz.dave.monster.ConeheadZombie.ARMOR_BREAK_HP) {
             return;
         }
-        if (mob.getEquipment() != null && mob.getEquipment().getHelmet() != null) {
-            mob.getEquipment().setHelmet(null);
+        if (mob.getEquipment() != null && mob.getEquipment().getHelmet() != null
+                && mob.getEquipment().getHelmet().getType() != Material.AIR) {
+            mob.getEquipment().setHelmet(new ItemStack(Material.AIR));
+            mob.getEquipment().setHelmetDropChance(0.0f);
         }
     }
 

@@ -12,6 +12,7 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityCombustEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
@@ -39,6 +40,14 @@ public final class PvzListener implements Listener {
 
     public PvzListener(PvzMode pvz) {
         this.pvz = pvz;
+    }
+
+    /** PVZ 怪物不得被点燃：拦截阳光灼烧等一切点燃来源（setShouldBurnInDay 在实机不可靠）。 */
+    @EventHandler(ignoreCancelled = true)
+    public void onCombust(EntityCombustEvent event) {
+        if (pvz.isPvzMonster(event.getEntity())) {
+            event.setCancelled(true);
+        }
     }
 
     /** PVZ 怪物死亡：清掉落；盲盒僵尸触发随机召唤。 */
