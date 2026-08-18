@@ -5,7 +5,6 @@ import com.rz.dave.pvz.PvzClass;
 
 import org.bukkit.Location;
 import org.bukkit.Material;
-import org.bukkit.enchantments.Enchantment;
 import org.bukkit.inventory.ItemStack;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -38,38 +37,93 @@ class PvzModeTest {
     }
 
     @Test
-    void swordsmanKitIsSingleUnbreakableIronSword() {
-        ItemStack[] kit = PvzClass.SWORDSMAN.createKit();
+    void machineGunnerKitIsUnbreakableDispenser() {
+        ItemStack[] kit = PvzClass.MACHINE_GUNNER.createKit();
         assertEquals(1, kit.length);
-        assertEquals(Material.IRON_SWORD, kit[0].getType());
+        assertEquals(Material.DISPENSER, kit[0].getType());
         assertTrue(kit[0].getItemMeta().isUnbreakable());
+        assertTrue(PvzClass.MACHINE_GUNNER.isShooter());
     }
 
     @Test
-    void archerKitIsInfinityBowPlusOneArrow() {
-        ItemStack[] kit = PvzClass.ARCHER.createKit();
-        assertEquals(2, kit.length);
-        assertEquals(Material.BOW, kit[0].getType());
+    void iceShooterKitIsUnbreakableDispenser() {
+        ItemStack[] kit = PvzClass.ICE_SHOOTER.createKit();
+        assertEquals(1, kit.length);
+        assertEquals(Material.DISPENSER, kit[0].getType());
         assertTrue(kit[0].getItemMeta().isUnbreakable());
-        assertTrue(kit[0].getItemMeta().hasEnchant(Enchantment.INFINITY));
-        assertEquals(Material.ARROW, kit[1].getType());
-        assertEquals(1, kit[1].getAmount());
+        assertTrue(PvzClass.ICE_SHOOTER.isShooter());
     }
 
     @Test
-    void randomClassIsAlwaysOneOfTwo() {
+    void wallnutHasNoWeapon() {
+        ItemStack[] kit = PvzClass.WALLNUT.createKit();
+        assertEquals(0, kit.length, "坚果没有武器");
+        assertFalse(PvzClass.WALLNUT.hasWeapon());
+    }
+
+    @Test
+    void shooterArmorsAreDyedLeatherAndUnbreakable() {
+        for (PvzClass clazz : PvzClass.values()) {
+            ItemStack[] armor = clazz.createArmor();
+            assertEquals(4, armor.length, clazz + " 护甲应为 4 件");
+            for (ItemStack piece : armor) {
+                assertTrue(piece.getType().name().startsWith("LEATHER_"), clazz + " 护甲应为皮革套");
+                assertTrue(piece.getItemMeta().isUnbreakable(), clazz + " 护甲默认无限耐久");
+                assertNotNull(((org.bukkit.inventory.meta.LeatherArmorMeta) piece.getItemMeta()).getColor(),
+                        clazz + " 护甲应有染色");
+            }
+        }
+        // 三职业颜色不同：浅绿 / 浅蓝 / 棕
+        org.bukkit.inventory.meta.LeatherArmorMeta machine =
+                (org.bukkit.inventory.meta.LeatherArmorMeta) PvzClass.MACHINE_GUNNER.createArmor()[0].getItemMeta();
+        org.bukkit.inventory.meta.LeatherArmorMeta ice =
+                (org.bukkit.inventory.meta.LeatherArmorMeta) PvzClass.ICE_SHOOTER.createArmor()[0].getItemMeta();
+        org.bukkit.inventory.meta.LeatherArmorMeta wallnut =
+                (org.bukkit.inventory.meta.LeatherArmorMeta) PvzClass.WALLNUT.createArmor()[0].getItemMeta();
+        assertTrue(!machine.getColor().equals(ice.getColor()) && !ice.getColor().equals(wallnut.getColor()),
+                "三职业护甲颜色应各不相同");
+    }
+
+    @Test
+    void randomClassIsAlwaysOneOfThree() {
         for (int i = 0; i < 200; i++) {
             PvzClass clazz = PvzClass.random();
-            assertTrue(clazz == PvzClass.SWORDSMAN || clazz == PvzClass.ARCHER);
+            assertTrue(clazz == PvzClass.MACHINE_GUNNER || clazz == PvzClass.ICE_SHOOTER
+                    || clazz == PvzClass.WALLNUT);
         }
     }
 
     @Test
     void randomClassSelectionUsesReplacement() {
-        assertEquals(PvzClass.SWORDSMAN, PvzClass.fromRandomIndex(0));
-        assertEquals(PvzClass.ARCHER, PvzClass.fromRandomIndex(1));
-        assertEquals(PvzClass.SWORDSMAN, PvzClass.fromRandomIndex(2));
-        assertEquals(PvzClass.ARCHER, PvzClass.fromRandomIndex(3));
+        assertEquals(PvzClass.MACHINE_GUNNER, PvzClass.fromRandomIndex(0));
+        assertEquals(PvzClass.ICE_SHOOTER, PvzClass.fromRandomIndex(1));
+        assertEquals(PvzClass.WALLNUT, PvzClass.fromRandomIndex(2));
+        assertEquals(PvzClass.MACHINE_GUNNER, PvzClass.fromRandomIndex(3));
+    }
+
+    @Test
+    void blindBoxSummonDistribution() {
+        // 50% 苦力怕 / 20% 普通 / 10% 巨人 / 10% 路障 / 10% 铁桶
+        assertEquals(com.rz.dave.monster.MonsterManager.MonsterType.SUMMON_CREEPER,
+                PvzMode.pickSummonType(0.0));
+        assertEquals(com.rz.dave.monster.MonsterManager.MonsterType.SUMMON_CREEPER,
+                PvzMode.pickSummonType(0.4999));
+        assertEquals(com.rz.dave.monster.MonsterManager.MonsterType.PLAIN_ZOMBIE,
+                PvzMode.pickSummonType(0.5));
+        assertEquals(com.rz.dave.monster.MonsterManager.MonsterType.PLAIN_ZOMBIE,
+                PvzMode.pickSummonType(0.6999));
+        assertEquals(com.rz.dave.monster.MonsterManager.MonsterType.GIANT_ZOMBIE,
+                PvzMode.pickSummonType(0.7));
+        assertEquals(com.rz.dave.monster.MonsterManager.MonsterType.GIANT_ZOMBIE,
+                PvzMode.pickSummonType(0.7999));
+        assertEquals(com.rz.dave.monster.MonsterManager.MonsterType.CONEHEAD_ZOMBIE,
+                PvzMode.pickSummonType(0.8));
+        assertEquals(com.rz.dave.monster.MonsterManager.MonsterType.CONEHEAD_ZOMBIE,
+                PvzMode.pickSummonType(0.8999));
+        assertEquals(com.rz.dave.monster.MonsterManager.MonsterType.BUCKETHEAD_ZOMBIE,
+                PvzMode.pickSummonType(0.9));
+        assertEquals(com.rz.dave.monster.MonsterManager.MonsterType.BUCKETHEAD_ZOMBIE,
+                PvzMode.pickSummonType(0.9999));
     }
 
     @Test
@@ -118,8 +172,7 @@ class PvzModeTest {
     void waveMathScalesMonstersAndSpawns() {
         assertEquals(3, PvzMode.spawnsPerWave(0));
         assertEquals(8, PvzMode.spawnsPerWave(5));
-        assertEquals(20.0, PvzMode.monsterHealth(0), 1e-9);
-        assertEquals(30.0, PvzMode.monsterHealth(5), 1e-9);
+        assertEquals(25.0, PvzMode.BLIND_BOX_HEALTH, 1e-9, "盲盒僵尸血量固定 25");
     }
 
     @Test

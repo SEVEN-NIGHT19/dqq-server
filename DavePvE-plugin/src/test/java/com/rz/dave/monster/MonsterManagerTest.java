@@ -90,9 +90,21 @@ class MonsterManagerTest {
     @Test
     void monsterTypeDisplayNames() {
         assertEquals("盲盒僵尸", MonsterManager.MonsterType.BLIND_BOX_ZOMBIE.displayName());
-        assertEquals("原版僵尸", MonsterManager.MonsterType.PLAIN_ZOMBIE.displayName());
+        assertEquals("普通僵尸", MonsterManager.MonsterType.PLAIN_ZOMBIE.displayName());
         assertEquals("巨人僵尸", MonsterManager.MonsterType.GIANT_ZOMBIE.displayName());
+        assertEquals("路障僵尸", MonsterManager.MonsterType.CONEHEAD_ZOMBIE.displayName());
+        assertEquals("铁桶僵尸", MonsterManager.MonsterType.BUCKETHEAD_ZOMBIE.displayName());
         assertEquals("苦力怕", MonsterManager.MonsterType.SUMMON_CREEPER.displayName());
+    }
+
+    @Test
+    void armoredZombieHealthAndHelmetConstants() {
+        assertEquals(38.0, com.rz.dave.monster.ConeheadZombie.HEALTH, 0.001);
+        assertEquals(Material.OAK_PLANKS, com.rz.dave.monster.ConeheadZombie.HELMET);
+        assertEquals(137.0, com.rz.dave.monster.BucketheadZombie.HEALTH, 0.001);
+        assertEquals(Material.IRON_BLOCK, com.rz.dave.monster.BucketheadZombie.HELMET);
+        assertEquals(20.0, com.rz.dave.monster.ConeheadZombie.ARMOR_BREAK_HP, 0.001);
+        assertEquals(20.0, com.rz.dave.monster.BucketheadZombie.ARMOR_BREAK_HP, 0.001);
     }
 
     @Test

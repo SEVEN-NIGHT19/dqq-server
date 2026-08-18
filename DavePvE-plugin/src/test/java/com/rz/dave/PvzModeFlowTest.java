@@ -2,6 +2,7 @@ package com.rz.dave;
 import com.rz.dave.DaveManager;
 import com.rz.dave.pvz.PvzListener;
 import com.rz.dave.pvz.PvzMode;
+import com.rz.dave.pvz.PvzClass;
 
 import io.papermc.paper.event.entity.EntityKnockbackEvent;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -130,9 +131,16 @@ class PvzModeFlowTest {
         assertTrue(pvz.isPlaying(a) && pvz.isPlaying(b));
         String status = pvz.statusSummary();
         assertTrue(status.contains("1路") && status.contains("存活玩家 2"), status);
-        // 职业装备已发放
-        assertTrue(a.getInventory().contains(Material.IRON_SWORD)
-                || a.getInventory().contains(Material.BOW));
+        // 新职业池：机枪射手/寒冰射手/坚果 之一；射手发发射器武器
+        PvzClass clazz = pvz.classOf(a);
+        assertNotNull(clazz);
+        assertTrue(clazz == PvzClass.MACHINE_GUNNER || clazz == PvzClass.ICE_SHOOTER
+                || clazz == PvzClass.WALLNUT, "职业应来自新职业池");
+        if (clazz.hasWeapon()) {
+            assertTrue(a.getInventory().contains(Material.DISPENSER), "射手职业应有发射器武器");
+        }
+        assertEquals(clazz == PvzClass.WALLNUT ? 120.0 : 40.0, a.getMaxHealth(), 0.001,
+                "玩家默认 40 点血，坚果 120 点血");
     }
 
     @Test
