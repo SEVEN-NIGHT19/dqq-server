@@ -8,6 +8,7 @@ import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Zombie;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.plugin.Plugin;
 
 /**
  * 路障僵尸（仿 PVZ 锥形路障）：38 点血量，头戴橡木木板；
@@ -20,17 +21,16 @@ public final class ConeheadZombie extends Monster {
     public static final double ARMOR_BREAK_HP = 20.0;
     public static final Material HELMET = Material.OAK_PLANKS;
 
-    public ConeheadZombie(SpawnContext context) {
-        super(context);
+    public ConeheadZombie(Plugin plugin) {
+        super(plugin);
     }
 
     @Override
-    public LivingEntity spawn(World world, Location loc) {
+    public LivingEntity onSpawn(World world, Location loc, SpawnContext context) {
         Zombie zombie = world.spawn(loc, Zombie.class, false, z -> {
             z.setBaby(false);
             z.setCanPickupItems(false);
             z.setShouldBurnInDay(false);            // 不受阳光灼烧
-            z.getEquipment().clear();
             z.getEquipment().setHelmet(new ItemStack(HELMET));
             z.getEquipment().setHelmetDropChance(0.0f);
             z.setCustomName(ChatColor.DARK_RED + "路障僵尸");
@@ -40,7 +40,7 @@ public final class ConeheadZombie extends Monster {
             z.addScoreboardTag(MonsterManager.TAG_ARMORED);
             z.setRemoveWhenFarAway(false);
             z.setPersistent(true);
-            z.getPersistentDataContainer().set(laneKey(), PersistentDataType.STRING, laneId());
+            z.getPersistentDataContainer().set(context.laneKey(), PersistentDataType.STRING, context.laneId());
         });
         zombie.setMaxHealth(HEALTH);
         zombie.setHealth(HEALTH);
