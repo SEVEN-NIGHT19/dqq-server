@@ -32,12 +32,16 @@ public final class MonsterManager {
     public static final String TAG_BLINDBOX = "pvz_blindbox";
     /** 盲盒僵尸死亡后召唤出的怪物标签。 */
     public static final String TAG_SUMMON = "pvz_summon";
+    /** 戴盔甲怪物的标签（路障/铁桶僵尸）：血量降到阈值后破甲（摘帽）。 */
+    public static final String TAG_ARMORED = "pvz_armored";
 
     /** 怪物种类注册表（供生成入口与后续扩展使用）。 */
     public enum MonsterType {
         BLIND_BOX_ZOMBIE("盲盒僵尸"),
-        PLAIN_ZOMBIE("原版僵尸"),
+        PLAIN_ZOMBIE("普通僵尸"),
         GIANT_ZOMBIE("巨人僵尸"),
+        CONEHEAD_ZOMBIE("路障僵尸"),
+        BUCKETHEAD_ZOMBIE("铁桶僵尸"),
         SUMMON_CREEPER("苦力怕");
 
         private final String displayName;

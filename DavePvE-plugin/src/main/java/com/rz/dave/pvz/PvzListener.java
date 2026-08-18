@@ -4,23 +4,30 @@ import com.rz.dave.DaveManager;
 import io.papermc.paper.event.entity.EntityKnockbackEvent;
 import org.bukkit.GameMode;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.block.Action;
+import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityCombustEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.EntityRegainHealthEvent;
 import org.bukkit.event.entity.EntityTargetEvent;
+import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
+import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
+import org.bukkit.inventory.ItemStack;
 
 /**
  * PVZ 模式事件监听。所有逻辑都先经 PvzMode 的 isPlaying/isPvzMonster 守卫，
@@ -33,6 +40,14 @@ public final class PvzListener implements Listener {
 
     public PvzListener(PvzMode pvz) {
         this.pvz = pvz;
+    }
+
+    /** PVZ 怪物不得被点燃：拦截阳光灼烧等一切点燃来源（setShouldBurnInDay 在实机不可靠）。 */
+    @EventHandler(ignoreCancelled = true)
+    public void onCombust(EntityCombustEvent event) {
+        if (pvz.isPvzMonster(event.getEntity())) {
+            event.setCancelled(true);
+        }
     }
 
     /** PVZ 怪物死亡：清掉落；盲盒僵尸触发随机召唤。 */
@@ -56,15 +71,16 @@ public final class PvzListener implements Listener {
         pvz.onPlayerDeath(player);
     }
 
-    /** PVZ 玩家重生成：强制保持观察者并回大厅，避免复活机制干扰。 */
+    /** PVZ 玩家重生成：保持观察者且回到本路游玩场地（观战），避免复活到大厅/世界出生点。 */
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onPlayerRespawn(PlayerRespawnEvent event) {
         Player player = event.getPlayer();
         if (!pvz.isPlaying(player)) {
             return;
         }
+        event.setRespawnLocation(pvz.respawnLocation(player));
         player.setGameMode(GameMode.SPECTATOR);
-        player.sendMessage(org.bukkit.ChatColor.RED + "【PVZ】你已阵亡，本局不会复活。");
+        player.sendMessage(org.bukkit.ChatColor.RED + "【PVZ】你已阵亡，本局不会复活，观战中；游戏结束约 10 秒后返回大厅。");
     }
 
     /** PVZ 苦力怕爆炸不破坏地形（保留实体伤害）。 */
@@ -177,6 +193,53 @@ public final class PvzListener implements Listener {
     public void onKnockback(EntityKnockbackEvent event) {
         if (pvz.isPvzMonster(event.getEntity())) {
             event.setCancelled(true);
+        }
+    }
+
+    /** PVZ 射手职业右键发射（机枪射手/寒冰射手）。
+     *  注意：不能 ignoreCancelled —— 右键空气事件可能被其他监听器（如菜单/保护）cancel，
+     *  与大模式一致，无论空气还是方块右键都照常发射。 */
+    @EventHandler
+    public void onInteract(PlayerInteractEvent event) {
+        Player player = event.getPlayer();
+        if (!pvz.isPlaying(player)) {
+            return;
+        }
+        if (event.getAction() != Action.RIGHT_CLICK_AIR && event.getAction() != Action.RIGHT_CLICK_BLOCK) {
+            return;
+        }
+        ItemStack held = player.getInventory().getItemInMainHand();
+        if (held.getType() == org.bukkit.Material.DISPENSER && pvz.isShooterWeapon(held)) {
+            event.setCancelled(true);   // 武器不可用于与方块交互
+            pvz.fireShooter(player);
+        }
+    }
+
+    /** PVZ 子弹命中怪物：结算伤害/冰冻。 */
+    @EventHandler(ignoreCancelled = true)
+    public void onProjectileHit(ProjectileHitEvent event) {
+        if (!pvz.isPvzBullet(event.getEntity())) {
+            return;
+        }
+        if (event.getHitEntity() instanceof Mob mob && pvz.isPvzMonster(mob)) {
+            pvz.onShooterBulletHit(event.getEntity(), mob);
+        }
+    }
+
+    /**
+     * 通用伤害事件：坚果职业只受 10% 伤害（一切伤害来源）；
+     * 带甲僵尸（路障/铁桶）血量跌破阈值时破甲（摘帽）。
+     */
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onEntityDamage(EntityDamageEvent event) {
+        if (event.getEntity() instanceof Mob mob && pvz.isPvzMonster(mob)) {
+            pvz.maybeBreakArmor(mob);
+            return;
+        }
+        if (event.getEntity() instanceof Player player && pvz.isPlaying(player)) {
+            if (pvz.classOf(player) == PvzClass.WALLNUT) {
+                event.setDamage(event.getDamage() * PvzMode.WALLNUT_DAMAGE_RATIO);
+            }
         }
     }
 
