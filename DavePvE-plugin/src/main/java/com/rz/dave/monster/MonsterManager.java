@@ -70,6 +70,8 @@ public final class MonsterManager {
         register(MonsterType.BLIND_BOX_ZOMBIE, new BlindBoxZombie(plugin));
         register(MonsterType.PLAIN_ZOMBIE, new NormalZombie(plugin));
         register(MonsterType.GIANT_ZOMBIE, new GiantZombie(plugin));
+        register(MonsterType.CONEHEAD_ZOMBIE, new ConeheadZombie(plugin));
+        register(MonsterType.BUCKETHEAD_ZOMBIE, new BucketheadZombie(plugin));
         register(MonsterType.SUMMON_CREEPER, new DqqCreeper(plugin));
     }
 
