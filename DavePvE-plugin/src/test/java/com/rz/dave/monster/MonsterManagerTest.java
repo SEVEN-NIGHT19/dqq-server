@@ -110,6 +110,19 @@ class MonsterManagerTest {
         assertEquals(Material.HAY_BLOCK, MonsterManager.blindBoxHelmet().getType());
     }
 
+    @Test
+    void registryCreatesRegisteredMonsterClasses() {
+        SpawnContext ctx = new SpawnContext("one", laneKey, 40.0, 0.5);
+        assertTrue(MonsterManager.create(MonsterManager.MonsterType.BLIND_BOX_ZOMBIE, ctx)
+                instanceof BlindBoxZombie);
+        assertTrue(MonsterManager.create(MonsterManager.MonsterType.PLAIN_ZOMBIE, ctx)
+                instanceof NormalZombie);
+        assertTrue(MonsterManager.create(MonsterManager.MonsterType.GIANT_ZOMBIE, ctx)
+                instanceof GiantZombie);
+        assertTrue(MonsterManager.create(MonsterManager.MonsterType.SUMMON_CREEPER, ctx)
+                instanceof DqqCreeper);
+    }
+
     // ---------------------------------------------------------------- MockBukkit 可执行
 
     @Test
@@ -128,7 +141,8 @@ class MonsterManagerTest {
     @Test
     @Disabled("MockBukkit 4.110 未实现 setCanPickupItems/setShouldBurnInDay/setRemoveWhenFarAway")
     void blindBoxZombieHasPvzTagsAndIgnoresSunburn() {
-        Zombie z = MonsterManager.spawnBlindBoxZombie(world, loc(world), "one", laneKey, 40.0, 0.5);
+        Zombie z = (Zombie) MonsterManager.spawn(MonsterManager.MonsterType.BLIND_BOX_ZOMBIE,
+                world, loc(world), new SpawnContext("one", laneKey, 40.0, 0.5));
         assertNotNull(z, "盲盒僵尸应生成成功");
         assertTrue(z.getScoreboardTags().contains(MonsterManager.TAG_MONSTER));
         assertTrue(z.getScoreboardTags().contains(MonsterManager.TAG_BLINDBOX));
@@ -142,7 +156,8 @@ class MonsterManagerTest {
     @Test
     @Disabled("MockBukkit 4.110 未实现 setCanPickupItems/setShouldBurnInDay/setRemoveWhenFarAway")
     void summonPlainZombieHasSummonTagAndIgnoresSunburn() {
-        Zombie z = MonsterManager.spawnSummonZombie(world, loc(world), "two", laneKey, false);
+        Zombie z = (Zombie) MonsterManager.spawn(MonsterManager.MonsterType.PLAIN_ZOMBIE,
+                world, loc(world), SpawnContext.basic("two", laneKey));
         assertNotNull(z, "召唤普通僵尸应生成成功");
         assertTrue(z.getScoreboardTags().contains(MonsterManager.TAG_MONSTER));
         assertTrue(z.getScoreboardTags().contains(MonsterManager.TAG_SUMMON));
@@ -153,7 +168,8 @@ class MonsterManagerTest {
     @Test
     @Disabled("MockBukkit 4.110 未实现 setCanPickupItems/setShouldBurnInDay/setRemoveWhenFarAway")
     void giantZombieIsFourTimesScaleAndHealth() {
-        Zombie g = MonsterManager.spawnSummonZombie(world, loc(world), "three", laneKey, true);
+        Zombie g = (Zombie) MonsterManager.spawn(MonsterManager.MonsterType.GIANT_ZOMBIE,
+                world, loc(world), SpawnContext.basic("three", laneKey));
         assertNotNull(g, "巨人僵尸应生成成功");
         AttributeInstance scale = g.getAttribute(Attribute.SCALE);
         assertNotNull(scale, "僵尸应有体型属性 SCALE");
@@ -166,7 +182,9 @@ class MonsterManagerTest {
     @Test
     @Disabled("MockBukkit 4.110 未实现 setCanPickupItems/setShouldBurnInDay/setRemoveWhenFarAway")
     void summonCreeperHasPvzTags() {
-        org.bukkit.entity.Creeper c = MonsterManager.spawnSummonCreeper(world, loc(world), "four", laneKey);
+        org.bukkit.entity.Creeper c = (org.bukkit.entity.Creeper) MonsterManager.spawn(
+                MonsterManager.MonsterType.SUMMON_CREEPER, world, loc(world),
+                SpawnContext.basic("four", laneKey));
         assertNotNull(c, "召唤苦力怕应生成成功");
         assertTrue(c.getScoreboardTags().contains(MonsterManager.TAG_MONSTER));
         assertTrue(c.getScoreboardTags().contains(MonsterManager.TAG_SUMMON));

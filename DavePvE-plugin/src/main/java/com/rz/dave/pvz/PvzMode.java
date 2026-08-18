@@ -1,6 +1,7 @@
 package com.rz.dave.pvz;
 import com.rz.dave.DaveManager;
 import com.rz.dave.monster.MonsterManager;
+import com.rz.dave.monster.SpawnContext;
 
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
@@ -619,8 +620,9 @@ public final class PvzMode {
         Location spawn = lane.spawn();
         Location loc = spawn.clone().add(
                 (Math.random() - 0.5) * 2.0, 0, (Math.random() - 0.5) * 2.0);
-        MonsterManager.spawnBlindBoxZombie(world, loc, lane.id(), laneKey,
-                monsterHealth(waveIndex), monsterAttackMultiplier);
+        MonsterManager.spawn(MonsterManager.MonsterType.BLIND_BOX_ZOMBIE, world, loc,
+                new SpawnContext(lane.id(), laneKey,
+                        monsterHealth(waveIndex), monsterAttackMultiplier));
     }
 
     /**
@@ -639,15 +641,18 @@ public final class PvzMode {
         }
         double roll = Math.random();
         if (roll < 0.50) {
-            if (MonsterManager.spawnSummonCreeper(world, loc, lane.id(), laneKey) != null) {
+            if (MonsterManager.spawn(MonsterManager.MonsterType.SUMMON_CREEPER, world, loc,
+                    SpawnContext.basic(lane.id(), laneKey)) != null) {
                 Bukkit.broadcastMessage(ChatColor.YELLOW + "【PVZ】盲盒僵尸死亡，召唤出一只原版苦力怕！");
             }
         } else if (roll < 0.75) {
-            if (MonsterManager.spawnSummonZombie(world, loc, lane.id(), laneKey, false) != null) {
+            if (MonsterManager.spawn(MonsterManager.MonsterType.PLAIN_ZOMBIE, world, loc,
+                    SpawnContext.basic(lane.id(), laneKey)) != null) {
                 Bukkit.broadcastMessage(ChatColor.YELLOW + "【PVZ】盲盒僵尸死亡，召唤出一只原版僵尸！");
             }
         } else {
-            if (MonsterManager.spawnSummonZombie(world, loc, lane.id(), laneKey, true) != null) {
+            if (MonsterManager.spawn(MonsterManager.MonsterType.GIANT_ZOMBIE, world, loc,
+                    SpawnContext.basic(lane.id(), laneKey)) != null) {
                 Bukkit.broadcastMessage(ChatColor.DARK_RED + "【PVZ】盲盒僵尸死亡，召唤出一只巨人僵尸！");
             }
         }

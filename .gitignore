@@ -1,4 +1,5 @@
 # 构建产物
+target/
 build/
 out/
 *.class

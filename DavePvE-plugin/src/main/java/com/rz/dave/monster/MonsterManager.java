@@ -1,25 +1,22 @@
 package com.rz.dave.monster;
 
-import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
-import org.bukkit.attribute.Attribute;
-import org.bukkit.attribute.AttributeInstance;
-import org.bukkit.entity.Creeper;
+import org.bukkit.World;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
-import org.bukkit.entity.Zombie;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.Material;
-import org.bukkit.World;
-import org.bukkit.persistence.PersistentDataType;
+
+import java.util.EnumMap;
+import java.util.Map;
 
 /**
  * 自定义怪物管理器：统一注册与生成自定义怪物。
  *
- * <p>PVZ（随机植物对战随机僵尸）模式用到的怪物集中在这里配置，
- * 后续新增怪物（精英怪、Boss 等）也在此注册，便于统一维护
- * 体型、标签、血量与攻击等属性。
+ * <p>每种怪物继承 {@link Monster} 抽象类，并在本类中通过
+ * {@link #register(MonsterType, MonsterFactory)} 注册到类型注册表；
+ * 生成时按 {@link MonsterType} 从注册表取出对应怪物类实例化并生成实体，
+ * 便于统一维护体型、标签、血量与攻击等属性。
  *
  * <p>掉落规则：所有带 {@link #TAG_MONSTER} 标签的怪物死亡时由
  * PVZ 死亡监听统一清空掉落物（击杀无任何掉落）。
@@ -58,7 +55,47 @@ public final class MonsterManager {
         }
     }
 
+    /** 怪物工厂：根据生成上下文创建具体怪物实例（未生成实体）。 */
+    @FunctionalInterface
+    public interface MonsterFactory {
+        Monster create(SpawnContext context);
+    }
+
+    /** 怪物类型 → 怪物工厂 注册表。 */
+    private static final Map<MonsterType, MonsterFactory> REGISTRY = new EnumMap<>(MonsterType.class);
+
+    static {
+        // 统一注册所有怪物类，新增怪物在此登记后即可通过统一入口生成。
+        REGISTRY.put(MonsterType.BLIND_BOX_ZOMBIE, BlindBoxZombie::new);
+        REGISTRY.put(MonsterType.PLAIN_ZOMBIE, NormalZombie::new);
+        REGISTRY.put(MonsterType.GIANT_ZOMBIE, GiantZombie::new);
+        REGISTRY.put(MonsterType.SUMMON_CREEPER, DqqCreeper::new);
+    }
+
     private MonsterManager() {
+    }
+
+    /**
+     * 注册自定义怪物：将怪物类型与工厂绑定，供统一入口生成。
+     * 已存在的类型会被覆盖。
+     */
+    public static void register(MonsterType type, MonsterFactory factory) {
+        REGISTRY.put(type, factory);
+    }
+
+    /** 按类型创建怪物实例（未生成实体），用于需要直接操作实例的场景。 */
+    public static Monster create(MonsterType type, SpawnContext context) {
+        MonsterFactory factory = REGISTRY.get(type);
+        if (factory == null) {
+            throw new IllegalArgumentException("未注册的怪物类型: " + type);
+        }
+        return factory.create(context);
+    }
+
+    /** 统一生成入口：按注册的怪物类型生成实体。 */
+    public static LivingEntity spawn(MonsterType type, World world, Location loc,
+                                     SpawnContext context) {
+        return create(type, context).spawn(world, loc);
     }
 
     /** 判断实体是否为 PVZ 归属怪物（带 {@value #TAG_MONSTER} 标签）。 */
@@ -66,94 +103,8 @@ public final class MonsterManager {
         return entity != null && entity.getScoreboardTags().contains(TAG_MONSTER);
     }
 
-    /**
-     * 生成盲盒僵尸：戴着盲盒头盔的普通僵尸，不惧阳光（昼间不燃烧），
-     * 血量随波次成长，死亡后由 PVZ 逻辑随机召唤其他怪物。
-     */
-    public static Zombie spawnBlindBoxZombie(World world, Location loc, String laneId,
-                                             NamespacedKey laneKey, double maxHp,
-                                             double attackMultiplier) {
-        Zombie zombie = world.spawn(loc, Zombie.class, z -> {
-            z.setBaby(false);
-            z.setCanPickupItems(false);
-            z.setShouldBurnInDay(false);            // 不受阳光灼烧
-            z.getEquipment().clear();
-            z.getEquipment().setHelmet(blindBoxHelmet());
-            z.getEquipment().setHelmetDropChance(0.0f);
-            z.setCustomName(ChatColor.DARK_RED + "盲盒僵尸");
-            z.setCustomNameVisible(true);
-            z.addScoreboardTag(TAG_MONSTER);
-            z.addScoreboardTag(TAG_BLINDBOX);
-            z.setRemoveWhenFarAway(false);
-            z.setPersistent(true);
-            z.getPersistentDataContainer().set(laneKey, PersistentDataType.STRING, laneId);
-        });
-        if (zombie != null) {
-            applyHealthAndAttack(zombie, maxHp, attackMultiplier);
-        }
-        return zombie;
-    }
-
-    /**
-     * 生成召唤系僵尸（盲盒僵尸死亡后的产物）：PVZ 标签、昼间不燃。
-     *
-     * @param giant 是否为巨人僵尸（原版僵尸 4 倍体型、4 倍血量）
-     */
-    public static Zombie spawnSummonZombie(World world, Location loc, String laneId,
-                                           NamespacedKey laneKey, boolean giant) {
-        Zombie zombie = world.spawn(loc, Zombie.class, z -> {
-            z.setBaby(false);
-            z.setCanPickupItems(false);
-            z.setShouldBurnInDay(false);            // 不受阳光灼烧
-            z.getEquipment().clear();
-            if (giant) {
-                AttributeInstance scale = z.getAttribute(Attribute.SCALE);
-                if (scale != null) {
-                    scale.setBaseValue(GIANT_ZOMBIE_SCALE);
-                }
-                z.setCustomName(ChatColor.DARK_RED + "巨人僵尸");
-                z.setCustomNameVisible(true);
-            }
-            z.addScoreboardTag(TAG_MONSTER);
-            z.addScoreboardTag(TAG_SUMMON);
-            z.setRemoveWhenFarAway(false);
-            z.setPersistent(true);
-            z.getPersistentDataContainer().set(laneKey, PersistentDataType.STRING, laneId);
-        });
-        if (zombie != null && giant) {
-            double hp = BASE_ZOMBIE_HEALTH * GIANT_ZOMBIE_HEALTH_MULTIPLIER;
-            zombie.setMaxHealth(hp);
-            zombie.setHealth(hp);
-        }
-        return zombie;
-    }
-
-    /** 生成召唤系苦力怕（盲盒僵尸死亡后的产物）：PVZ 标签。 */
-    public static Creeper spawnSummonCreeper(World world, Location loc, String laneId,
-                                             NamespacedKey laneKey) {
-        return world.spawn(loc, Creeper.class, c -> {
-            c.setCanPickupItems(false);
-            c.addScoreboardTag(TAG_MONSTER);
-            c.addScoreboardTag(TAG_SUMMON);
-            c.setRemoveWhenFarAway(false);
-            c.setPersistent(true);
-            c.getPersistentDataContainer().set(laneKey, PersistentDataType.STRING, laneId);
-        });
-    }
-
-    /** 用波次血量与攻击倍率覆盖怪物血量/攻击。 */
-    private static void applyHealthAndAttack(LivingEntity mob, double maxHp,
-                                             double attackMultiplier) {
-        mob.setMaxHealth(maxHp);
-        mob.setHealth(maxHp);
-        AttributeInstance atk = mob.getAttribute(Attribute.ATTACK_DAMAGE);
-        if (atk != null) {
-            atk.setBaseValue(atk.getBaseValue() * attackMultiplier);
-        }
-    }
-
-    /** 盲盒僵尸戴的盲盒头盔（干草块，玩家一眼能认出）。 */
+    /** 盲盒僵尸头盔（转发 {@link BlindBoxZombie#blindBoxHelmet()}，兼容旧入口）。 */
     public static ItemStack blindBoxHelmet() {
-        return new ItemStack(Material.HAY_BLOCK);
+        return BlindBoxZombie.blindBoxHelmet();
     }
 }
