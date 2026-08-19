@@ -219,7 +219,8 @@ class PvzModeTest {
         assertEquals(7000L, PvzMode.SNIPER_COOLDOWN_MS, "狙击豌豆冷却 7 秒");
         assertEquals(40.0, PvzMode.SNIPER_BULLET_DAMAGE, 1e-9, "狙击豌豆普通怪伤害 40");
         assertEquals(2.0, PvzMode.MOB_MELEE_RANGE, 1e-9, "近战判定 2 格");
-        assertTrue(com.rz.dave.monster.MonsterManager.MOVEMENT_SPEED_MULTIPLIER == 0.7);
+        assertEquals(0.75, com.rz.dave.monster.MonsterManager.MOVEMENT_SPEED_MULTIPLIER, 1e-9,
+                "全体怪物移速 0.75 倍");
     }
 
     @Test
@@ -245,8 +246,8 @@ class PvzModeTest {
     void armorTypeTagsDefined() {
         assertEquals("pvz_armored", com.rz.dave.monster.MonsterManager.TAG_ARMORED, "二类防具（帽子）");
         assertEquals("pvz_shield_armored", com.rz.dave.monster.MonsterManager.TAG_SHIELDED, "三类防具（手持盾）");
-        assertEquals(0.7, com.rz.dave.monster.MonsterManager.MOVEMENT_SPEED_MULTIPLIER, 1e-9,
-                "全体怪物移速 0.7 倍");
+        assertEquals(0.75, com.rz.dave.monster.MonsterManager.MOVEMENT_SPEED_MULTIPLIER, 1e-9,
+                "全体怪物移速 0.75 倍");
     }
 
     @Test

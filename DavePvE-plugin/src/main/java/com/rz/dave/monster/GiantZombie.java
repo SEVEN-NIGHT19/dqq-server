@@ -185,6 +185,7 @@ public final class GiantZombie extends Monster {
 
         public void attack() {
             attacking = true;
+            zombie.addScoreboardTag(MonsterManager.TAG_GIANT_ATTACK);
 
             zombie.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 20, 255, false, false));
 
@@ -223,7 +224,10 @@ public final class GiantZombie extends Monster {
                         )
                     );
 
-                    animationTask = Bukkit.getScheduler().runTaskLater(monster.plugin, () -> attacking = false, 20);
+                    animationTask = Bukkit.getScheduler().runTaskLater(monster.plugin, () -> {
+                    attacking = false;
+                    zombie.removeScoreboardTag(MonsterManager.TAG_GIANT_ATTACK);
+                }, 20);
                 }, 10);
             }, 30);
 
@@ -250,6 +254,7 @@ public final class GiantZombie extends Monster {
                 attackTask.cancel();
             }
             attacking = false;
+            zombie.removeScoreboardTag(MonsterManager.TAG_GIANT_ATTACK);
             axe.setInterpolationDuration(0);
             axe.setInterpolationDelay(0);
             axe.setTransformation(

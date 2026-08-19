@@ -747,7 +747,7 @@ public final class PvzMode {
                     }
                     continue;
                 }
-                // 永不仇恨追逐玩家：清空原版 AI 自动选择的目标（防引怪拖走堆叠）
+                // 永不仇恨追逐玩家：怪物 AI 已全局关闭，此处兜底清目标
                 if (mob.getTarget() != null) {
                     mob.setTarget(null);
                 }
@@ -757,27 +757,35 @@ public final class PvzMode {
                 long now = Bukkit.getCurrentTick();
                 Long lastAttack = mobLastAttack.get(mob.getUniqueId());
                 boolean inAttack = lastAttack != null && now - lastAttack < MOB_ATTACK_INTERVAL_TICKS;
-                if (inAttack) {
-                    // 攻击/爆炸动作期间停步，动作结束后继续推进
-                } else if (mob.getScoreboardTags().contains(MonsterManager.TAG_GIANT)) {
-                    // 巨人：攻击由自身挥斧动画调度（SLOWNESS 255 定身），此处只管推进
-                    if (!mob.getPathfinder().hasPath()) {
-                        mob.getPathfinder().moveTo(lane.base(), 1.0);
-                    }
+                boolean isGiant = mob.getScoreboardTags().contains(MonsterManager.TAG_GIANT);
+                boolean giantAttacking = isGiant
+                        && mob.getScoreboardTags().contains(MonsterManager.TAG_GIANT_ATTACK);
+                if (isFrozen(mob)) {
+                    // 冻结：完全停步
+                    stopMob(mob);
+                } else if (inAttack || giantAttacking) {
+                    // 攻击/爆炸动作期停步（挥完继续向基地推进）
+                    stopMob(mob);
+                } else if (isGiant) {
+                    // 巨人：攻击由自身挥斧动画调度，平时向基地推进
+                    moveToBase(mob, lane);
                 } else if (mob instanceof Creeper creeper
                         && nearestPvzPlayer(mob.getLocation(), lane, CREEPER_FUSE_RANGE) != null) {
                     // 苦力怕：路线上靠近玩家即炸（不追人）
                     mobLastAttack.put(mob.getUniqueId(), now);
+                    stopMob(mob);
                     creeper.explode();
                 } else {
                     Player melee = nearestPvzPlayer(mob.getLocation(), lane, MOB_MELEE_RANGE);
                     if (melee != null) {
-                        // 玩家挡路：攻击（原版近战伤害+挥击动画），攻击瞬间停步
+                        // 玩家挡路：面向玩家攻击（原版近战伤害+挥击动画），攻击瞬间停步
                         mobLastAttack.put(mob.getUniqueId(), now);
+                        stopMob(mob);
+                        face(mob, melee.getLocation());
                         mob.attack(melee);
-                    } else if (!mob.getPathfinder().hasPath()) {
+                    } else {
                         // 无人挡路：始终向基地推进
-                        mob.getPathfinder().moveTo(lane.base(), 1.0);
+                        moveToBase(mob, lane);
                     }
                 }
                 if (mob.getLocation().distanceSquared(lane.base()) <= ARRIVAL_DISTANCE_SQ) {
@@ -785,6 +793,40 @@ public final class PvzMode {
                 }
             }
         }
+    }
+
+    /** 停止怪物水平移动（保留垂直速度归零，避免滞空）。 */
+    private void stopMob(Mob mob) {
+        mob.setVelocity(new org.bukkit.util.Vector());
+    }
+
+    /** 手动驱动怪物向本路基地推进（AI 已关闭，移动完全由这里接管）。
+     *  速度 = 移动速度属性（已乘 0.75 倍）× 1.1（补偿实体速度每 tick 的空气阻力衰减）。 */
+    private void moveToBase(Mob mob, PvzLane lane) {
+        org.bukkit.util.Vector dir = lane.base().toVector().subtract(mob.getLocation().toVector());
+        dir.setY(0);
+        if (dir.lengthSquared() < 0.04) {
+            stopMob(mob);
+            return;
+        }
+        dir.normalize();
+        AttributeInstance speedAttr = mob.getAttribute(Attribute.MOVEMENT_SPEED);
+        double speed = speedAttr != null ? speedAttr.getValue() : 0.23;
+        double vel = speed * 1.1;
+        mob.setVelocity(new org.bukkit.util.Vector(dir.getX() * vel, 0, dir.getZ() * vel));
+        float yaw = (float) Math.toDegrees(Math.atan2(-dir.getX(), dir.getZ()));
+        mob.setRotation(Location.normalizeYaw(yaw), mob.getLocation().getPitch());
+    }
+
+    /** 使怪物面向目标位置（水平方向），用于近战攻击时面向玩家。 */
+    private void face(Mob mob, Location target) {
+        org.bukkit.util.Vector dir = target.toVector().subtract(mob.getLocation().toVector());
+        dir.setY(0);
+        if (dir.lengthSquared() <= 0.01) {
+            return;
+        }
+        float yaw = (float) Math.toDegrees(Math.atan2(-dir.getX(), dir.getZ()));
+        mob.setRotation(Location.normalizeYaw(yaw), mob.getLocation().getPitch());
     }
 
     private Player nearestPvzPlayer(Location from, PvzLane lane, double range) {
@@ -986,10 +1028,11 @@ public final class PvzMode {
         maybeBreakArmor(mob);
     }
 
-    /** 溅射：命中怪附近 1 格内其他 PVZ 怪物吃纯溅射伤害（不带额外、不带减速）。 */
+    /** 溅射：命中怪附近 1 格内**其他** PVZ 怪物吃纯溅射伤害（不带额外、不带减速）。
+     *  注意：Bukkit 实体对象每次获取可能是不同代理实例，必须用 UUID 排除命中怪本身。 */
     private void splashAround(Mob hit, double splash, Player shooter) {
         for (Entity entity : hit.getWorld().getNearbyEntities(hit.getLocation(), 1.0, 1.0, 1.0)) {
-            if (entity == hit) {
+            if (entity.getUniqueId().equals(hit.getUniqueId())) {
                 continue;
             }
             if (entity instanceof Mob mob && isPvzMonster(mob)) {
@@ -1021,14 +1064,14 @@ public final class PvzMode {
         return until != null && until > Bukkit.getCurrentTick();
     }
 
-    /** 冻结怪物：停止 AI 1.8 秒；重复冻结仅重置计时，不叠加。 */
+    /** 冻结怪物：1.8 秒内停止移动（怪物 AI 已全局关闭，移动由 monsterTick 手动驱动，
+     *  冻结期间 monsterTick 检测 isFrozen 停步）；重复冻结仅重置计时，不叠加。 */
     private void freeze(Mob mob) {
         long until = Bukkit.getCurrentTick() + ICE_FREEZE_TICKS;
         frozenUntil.put(mob.getUniqueId(), until);
-        mob.setAI(false);
+        mob.setVelocity(new org.bukkit.util.Vector());
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             if (mob.isValid() && until == frozenUntil.getOrDefault(mob.getUniqueId(), -1L)) {
-                mob.setAI(true);
                 frozenUntil.remove(mob.getUniqueId());
             }
         }, ICE_FREEZE_TICKS);
@@ -1142,6 +1185,7 @@ public final class PvzMode {
         switch (kind) {
             case "fire_small" -> eye.getWorld().spawn(eye, SmallFireball.class, f -> {
                 f.setDirection(dir.clone().multiply(SHOOTER_BULLET_SPEED));
+                f.setVelocity(dir.clone().multiply(SHOOTER_BULLET_SPEED));
                 f.setShooter(player);
                 f.setYield(0.0f);
                 f.setIsIncendiary(false);
@@ -1149,6 +1193,7 @@ public final class PvzMode {
             });
             case "fire_orange" -> eye.getWorld().spawn(eye, LargeFireball.class, f -> {
                 f.setDirection(dir.clone().multiply(SHOOTER_BULLET_SPEED));
+                f.setVelocity(dir.clone().multiply(SHOOTER_BULLET_SPEED));
                 f.setShooter(player);
                 f.setYield(0.0f);
                 f.setIsIncendiary(false);
@@ -1156,6 +1201,7 @@ public final class PvzMode {
             });
             case "dragon" -> eye.getWorld().spawn(eye, DragonFireball.class, f -> {
                 f.setDirection(dir.clone().multiply(SHOOTER_BULLET_SPEED));
+                f.setVelocity(dir.clone().multiply(SHOOTER_BULLET_SPEED));
                 f.setShooter(player);
                 markBullet(f, kind, DRAGON_DAMAGE, player);
             });

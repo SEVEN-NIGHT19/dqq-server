@@ -7,6 +7,7 @@ import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
+import org.bukkit.entity.Mob;
 import org.bukkit.event.HandlerList;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.Plugin;
@@ -38,13 +39,15 @@ public final class MonsterManager {
     public static final String TAG_ARMORED = "pvz_armored";
     /** 巨人僵尸标签：攻击由自身挥斧动画调度，通用怪物 AI 只负责向基地推进。 */
     public static final String TAG_GIANT = "pvz_giant";
+    /** 巨人僵尸挥斧攻击中标签：动画期间停步（attack() 加、动画结束移除）。 */
+    public static final String TAG_GIANT_ATTACK = "pvz_giant_attack";
     /**
      * 三类防具标签（铁门僵尸/梯子僵尸的盾牌类手持防具，当前版本尚未使用）：
      * 狙击豌豆无视二类/三类防具直接攻击本体。
      */
     public static final String TAG_SHIELDED = "pvz_shield_armored";
     /** 全体 PVZ 怪物移动速度倍数（相对原版基础速度）。 */
-    public static final double MOVEMENT_SPEED_MULTIPLIER = 0.7;
+    public static final double MOVEMENT_SPEED_MULTIPLIER = 0.75;
 
     /** 怪物种类注册表（供生成入口与后续扩展使用）。 */
     public enum MonsterType {
@@ -115,13 +118,17 @@ public final class MonsterManager {
     }
 
 /**
-     * 统一生成入口：按注册的怪物类型生成实体，并对全体 PVZ 怪物
-     * 统一把移动速度基础值降到原版的 0.7 倍（需求：怪物整体变慢）。
+     * 统一生成入口：按注册的怪物类型生成实体，并统一接管怪物行为：
+     * 关闭原版 AI（PVZ 怪物永不因仇恨追玩家，移动/攻击由 PvzMode.monsterTick 手动驱动），
+     * 移动速度基础值降到原版的 {@value #MOVEMENT_SPEED_MULTIPLIER} 倍。
      */
     public LivingEntity spawn(MonsterType type, World world, Location loc,
                               SpawnContext context) {
         LivingEntity entity = monster(type).spawn(world, loc, context);
         if (entity != null) {
+            if (entity instanceof Mob mob) {
+                mob.setAI(false);
+            }
             AttributeInstance speed = entity.getAttribute(Attribute.MOVEMENT_SPEED);
             if (speed != null) {
                 speed.setBaseValue(speed.getBaseValue() * MOVEMENT_SPEED_MULTIPLIER);
