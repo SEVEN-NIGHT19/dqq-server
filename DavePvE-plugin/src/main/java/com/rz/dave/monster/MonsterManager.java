@@ -46,6 +46,9 @@ public final class MonsterManager {
      * 狙击豌豆无视二类/三类防具直接攻击本体。
      */
     public static final String TAG_SHIELDED = "pvz_shield_armored";
+    /** 怪物对玩家的主动仇恨范围（FOLLOW_RANGE）：原版 AI 找玩家、受击反打都受此限制，
+     *  2 格外怪物不会因仇恨追逐玩家（防走位拖怪堆叠），2 格内正常攻击。 */
+    public static final double MOB_FOLLOW_RANGE = 2.0;
     /** 全体 PVZ 怪物移动速度倍数（相对原版基础速度）。 */
     public static final double MOVEMENT_SPEED_MULTIPLIER = 0.75;
 
@@ -119,15 +122,19 @@ public final class MonsterManager {
 
 /**
      * 统一生成入口：按注册的怪物类型生成实体，并统一接管怪物行为：
-     * 关闭原版 AI（PVZ 怪物永不因仇恨追玩家，移动/攻击由 PvzMode.monsterTick 手动驱动），
-     * 移动速度基础值降到原版的 {@value #MOVEMENT_SPEED_MULTIPLIER} 倍。
+     * 移动速度基础值降到原版的 {@value #MOVEMENT_SPEED_MULTIPLIER} 倍；
+     * 主动仇恨范围压到 {@value #MOB_FOLLOW_RANGE} 格（原版 AI 找玩家与受击反打都不出 2 格，
+     * 怪物不因仇恨追逐玩家，只沿路向基地推进；移动/寻路保留原版 AI，由 PvzMode.monsterTick 每 tick 覆盖目标并向基地 moveTo）。
      */
     public LivingEntity spawn(MonsterType type, World world, Location loc,
                               SpawnContext context) {
         LivingEntity entity = monster(type).spawn(world, loc, context);
         if (entity != null) {
             if (entity instanceof Mob mob) {
-                mob.setAI(false);
+                AttributeInstance follow = mob.getAttribute(Attribute.FOLLOW_RANGE);
+                if (follow != null) {
+                    follow.setBaseValue(MOB_FOLLOW_RANGE);
+                }
             }
             AttributeInstance speed = entity.getAttribute(Attribute.MOVEMENT_SPEED);
             if (speed != null) {

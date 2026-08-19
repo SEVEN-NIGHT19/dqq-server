@@ -32,7 +32,6 @@ import org.bukkit.scoreboard.Objective;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.entity.BlockDisplay;
-import org.bukkit.entity.Creeper;
 import org.bukkit.entity.DragonFireball;
 import org.bukkit.entity.LargeFireball;
 import org.bukkit.entity.Projectile;
@@ -89,9 +88,9 @@ public final class PvzMode {
     /** 每条路（每个队伍）玩家上限的默认值。 */
     public static final int DEFAULT_PLAYERS_PER_LANE = 5;
 
-    public static final double MOB_MELEE_RANGE = 2.0;         // 近战怪判定玩家挡路的水平范围
-    public static final double CREEPER_FUSE_RANGE = 3.0;      // 苦力怕路线上靠近玩家即炸的范围
-    public static final int MOB_ATTACK_INTERVAL_TICKS = 10;   // 怪物攻击/爆炸动作期（攻击瞬间停步）
+    /** 怪物对玩家的主动仇恨范围：原版 AI 找玩家、受击反打（HurtByTargetGoal）都受 FOLLOW_RANGE
+     *  属性限制（2 格外怪物完全不对玩家产生仇恨，防走位拖怪堆叠）；本路玩家进入 2 格内才被攻击。 */
+    public static final double MOB_MELEE_RANGE = 2.0;
     private static final int ARRIVAL_DISTANCE_SQ = 3; // ~1.7 格水平距离
     private static final int SPAWN_TIMER_STEP_TICKS = 20; // tick() 每秒执行一次
 
@@ -176,8 +175,6 @@ public final class PvzMode {
     private long waveStartedTick;
     private BukkitTask tickTask;
     private BukkitTask monsterTickTask;
-    /** 怪物最近一次攻击/爆炸的游戏刻（攻击动作期间停步不前进）。 */
-    private final Map<java.util.UUID, Long> mobLastAttack = new java.util.HashMap<>();
     /** 游戏结束后的 10 秒缓冲：此窗口内玩家留在场地观战，随后统一清退回大厅。 */
     private List<UUID> pendingEndPlayers;
     private BukkitTask pendingEndTask;
@@ -653,7 +650,6 @@ public final class PvzMode {
         shooterCooldowns.clear();
         frozenUntil.clear();
         icicleHits.clear();
-        mobLastAttack.clear();
         for (PvzLane lane : lanes.values()) {
             lane.reset(baseHealth);
         }
@@ -715,12 +711,13 @@ public final class PvzMode {
      *
      * <p>规则（需求：怪物不因仇恨追逐玩家，防走位拖怪导致堆叠）：
      * <ul>
-     *   <li>每 tick 清空怪物仇恨目标，怪物永不追击玩家；</li>
-     *   <li>近战怪：本路存活玩家挡在行进路径（约 2 格）时攻击，攻击动作期间停步
-     *       （{@link #MOB_ATTACK_INTERVAL_TICKS}），挥完继续向基地推进；被攻击也不回头追；</li>
-     *   <li>苦力怕：不追人，路线上靠近玩家（约 3 格）即引爆；</li>
-     *   <li>巨人僵尸：不追人，挥斧攻击自行定身（SLOWNESS 255），平时向基地推进；</li>
-     *   <li>全体始终向本路基地（终点）推进，到达基地按原逻辑消失并扣基地血。</li>
+     *   <li>怪物生成时统一把 FOLLOW_RANGE 压到 {@link #MOB_MELEE_RANGE}（2 格）：
+     *       原版 AI 找玩家、受击反打全部被限制在 2 格内，2 格外怪物不会对玩家产生任何仇恨；</li>
+     *   <li>此处每 tick 兜底覆盖目标：2 格内本路存活玩家 → 交给原版 AI 攻击（自带攻击停顿）；
+     *       2 格外 → 清空目标，怪物始终向本路基地（终点）推进；</li>
+     *   <li>苦力怕：2 格内靠近玩家由原版 AI 引信爆炸；2 格外向基地推进；</li>
+     *   <li>巨人僵尸：挥斧由自身动画调度（SLOWNESS 255 攻击期定身），其余同一规则；</li>
+     *   <li>到达基地按原逻辑消失并扣基地血。</li>
      * </ul>
      */
     private void monsterTick() {
@@ -747,89 +744,29 @@ public final class PvzMode {
                     }
                     continue;
                 }
-                // 永不仇恨追逐玩家：怪物 AI 已全局关闭，此处兜底清目标
-                if (mob.getTarget() != null) {
+                // 仇恨控制：仅 2 格内本路存活玩家会被主动仇恨（原版 AI 攻击自带停顿/追打）
+                Player hate = nearestPvzPlayer(mob.getLocation(), lane, MOB_MELEE_RANGE);
+                if (hate != null) {
+                    mob.setTarget(hate);
+                } else if (mob.getTarget() != null) {
                     mob.setTarget(null);
+                }
+                if (isFrozen(mob)) {
+                    continue;   // 冻结：AI 已关，完全不动
                 }
                 if (lane.base() == null) {
                     continue;
                 }
-                long now = Bukkit.getCurrentTick();
-                Long lastAttack = mobLastAttack.get(mob.getUniqueId());
-                boolean inAttack = lastAttack != null && now - lastAttack < MOB_ATTACK_INTERVAL_TICKS;
-                boolean isGiant = mob.getScoreboardTags().contains(MonsterManager.TAG_GIANT);
-                boolean giantAttacking = isGiant
-                        && mob.getScoreboardTags().contains(MonsterManager.TAG_GIANT_ATTACK);
-                if (isFrozen(mob)) {
-                    // 冻结：完全停步
-                    stopMob(mob);
-                } else if (inAttack || giantAttacking) {
-                    // 攻击/爆炸动作期停步（挥完继续向基地推进）
-                    stopMob(mob);
-                } else if (isGiant) {
-                    // 巨人：攻击由自身挥斧动画调度，平时向基地推进
-                    moveToBase(mob, lane);
-                } else if (mob instanceof Creeper creeper
-                        && nearestPvzPlayer(mob.getLocation(), lane, CREEPER_FUSE_RANGE) != null) {
-                    // 苦力怕：路线上靠近玩家即炸（不追人）
-                    mobLastAttack.put(mob.getUniqueId(), now);
-                    stopMob(mob);
-                    creeper.explode();
-                } else {
-                    Player melee = nearestPvzPlayer(mob.getLocation(), lane, MOB_MELEE_RANGE);
-                    if (melee != null) {
-                        // 玩家挡路：面向玩家攻击（原版近战伤害+挥击动画），攻击瞬间停步
-                        mobLastAttack.put(mob.getUniqueId(), now);
-                        stopMob(mob);
-                        face(mob, melee.getLocation());
-                        mob.attack(melee);
-                    } else {
-                        // 无人挡路：始终向基地推进
-                        moveToBase(mob, lane);
-                    }
+                // 无仇恨时始终向基地推进（每 10 tick 强制重寻一次，覆盖原版随机游荡）
+                if (hate == null
+                        && (!mob.getPathfinder().hasPath() || Bukkit.getCurrentTick() % 10 == 0)) {
+                    mob.getPathfinder().moveTo(lane.base(), 1.0);
                 }
                 if (mob.getLocation().distanceSquared(lane.base()) <= ARRIVAL_DISTANCE_SQ) {
                     onMobArrived(mob, lane);
                 }
             }
         }
-    }
-
-    /** 停止怪物水平移动（保留垂直速度归零，避免滞空）。 */
-    private void stopMob(Mob mob) {
-        mob.setVelocity(new org.bukkit.util.Vector());
-    }
-
-    /** 手动驱动怪物向本路基地推进（AI 已关闭，移动完全由这里接管）。
-     *  注意：noAi 实体（setAI(false)）不会消费 velocity（原版 travel 被跳过），
-     *  因此用每 tick 等步长 teleport 推进：步长 = 移动速度属性（已乘 0.75 倍）。
-     *  场地为平坦数字路，无碰撞考虑；玩家挡路由近战判定先行拦截（攻击停步）。 */
-    private void moveToBase(Mob mob, PvzLane lane) {
-        Location from = mob.getLocation();
-        org.bukkit.util.Vector dir = lane.base().toVector().subtract(from.toVector());
-        dir.setY(0);
-        if (dir.lengthSquared() < 0.04) {
-            return;   // 已在基地附近（到达判定由调用方处理）
-        }
-        dir.normalize();
-        AttributeInstance speedAttr = mob.getAttribute(Attribute.MOVEMENT_SPEED);
-        double step = speedAttr != null ? speedAttr.getValue() : 0.23;
-        Location next = from.clone().add(dir.clone().multiply(step));
-        next.setY(from.getY());
-        mob.teleport(next);
-        float yaw = (float) Math.toDegrees(Math.atan2(-dir.getX(), dir.getZ()));
-        mob.setRotation(Location.normalizeYaw(yaw), from.getPitch());
-    }
-
-    /** 使怪物面向目标位置（水平方向），用于近战攻击时面向玩家。 */
-    private void face(Mob mob, Location target) {
-        org.bukkit.util.Vector dir = target.toVector().subtract(mob.getLocation().toVector());
-        dir.setY(0);
-        if (dir.lengthSquared() <= 0.01) {
-            return;
-        }
-        float yaw = (float) Math.toDegrees(Math.atan2(-dir.getX(), dir.getZ()));
-        mob.setRotation(Location.normalizeYaw(yaw), mob.getLocation().getPitch());
     }
 
     private Player nearestPvzPlayer(Location from, PvzLane lane, double range) {
@@ -1067,14 +1004,14 @@ public final class PvzMode {
         return until != null && until > Bukkit.getCurrentTick();
     }
 
-    /** 冻结怪物：1.8 秒内停止移动（怪物 AI 已全局关闭，移动由 monsterTick 手动驱动，
-     *  冻结期间 monsterTick 检测 isFrozen 停步）；重复冻结仅重置计时，不叠加。 */
+    /** 冻结怪物：关闭 AI 1.8 秒（完全停止移动/攻击）；重复冻结仅重置计时，不叠加。 */
     private void freeze(Mob mob) {
         long until = Bukkit.getCurrentTick() + ICE_FREEZE_TICKS;
         frozenUntil.put(mob.getUniqueId(), until);
-        mob.setVelocity(new org.bukkit.util.Vector());
+        mob.setAI(false);
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             if (mob.isValid() && until == frozenUntil.getOrDefault(mob.getUniqueId(), -1L)) {
+                mob.setAI(true);
                 frozenUntil.remove(mob.getUniqueId());
             }
         }, ICE_FREEZE_TICKS);

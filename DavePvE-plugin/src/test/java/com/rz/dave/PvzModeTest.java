@@ -248,6 +248,8 @@ class PvzModeTest {
         assertEquals("pvz_shield_armored", com.rz.dave.monster.MonsterManager.TAG_SHIELDED, "三类防具（手持盾）");
         assertEquals(0.75, com.rz.dave.monster.MonsterManager.MOVEMENT_SPEED_MULTIPLIER, 1e-9,
                 "全体怪物移速 0.75 倍");
+        assertEquals(2.0, com.rz.dave.monster.MonsterManager.MOB_FOLLOW_RANGE, 1e-9,
+                "怪物主动仇恨范围 2 格");
     }
 
     @Test
