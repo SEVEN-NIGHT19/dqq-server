@@ -14,9 +14,11 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.Plugin;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Transformation;
-import org.joml.AxisAngle4f;
+import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
 import java.util.Collection;
@@ -91,12 +93,14 @@ public final class GiantZombie extends Monster {
             e.setItemStack(new ItemStack(Material.WOODEN_AXE));
             e.setTransformation(
                 new Transformation(
-                    new Vector3f(-0.8f, 0, 2.425f),
-                    new AxisAngle4f(),
+                    new Vector3f(-0.8f, 3.675f, -1.25f),
+                    new Quaternionf(),
                     new Vector3f(3f, 3f, 3f),
-                    new AxisAngle4f()
+                    new Quaternionf()
                 )
             );
+            e.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.FIRSTPERSON_RIGHTHAND);
+            e.setRotation(0, 90);
         });
         zombieInstances.put(zombie, new ZombieInstance(this, zombie, axe));
 
@@ -169,7 +173,7 @@ public final class GiantZombie extends Monster {
         private final Zombie zombie;
         private final ItemDisplay axe;
         private boolean attacking;
-        private BukkitTask animationTask; // TODO
+        private BukkitTask animationTask;
         private BukkitTask attackTask;
 
         public ZombieInstance(GiantZombie monster, Zombie zombie, ItemDisplay axe) {
@@ -180,14 +184,17 @@ public final class GiantZombie extends Monster {
 
         public void attack() {
             attacking = true;
+
+            zombie.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 20, 255, false, false));
+
             axe.setInterpolationDuration(15);
             axe.setInterpolationDelay(0);
             axe.setTransformation(
                 new Transformation(
-                    new Vector3f(-0.8f, 1.5f, 0.925f),
-                    new AxisAngle4f(),
+                    new Vector3f(-0.8f, 1.5f, -2.75f),
+                    new Quaternionf(),
                     new Vector3f(3f, 3f, 3f),
-                    new AxisAngle4f(-0.63667f, 0f, 0f, 0.77111f)
+                    new Quaternionf(-0.63667f, 0f, 0f, 0.77111f)
                 )
             );
 
@@ -196,10 +203,10 @@ public final class GiantZombie extends Monster {
                 axe.setInterpolationDelay(0);
                 axe.setTransformation(
                     new Transformation(
-                        new Vector3f(-0.8f, 1.5f, 2.925f),
-                        new AxisAngle4f(),
+                        new Vector3f(-0.8f, 1.5f, -0.75f),
+                        new Quaternionf(),
                         new Vector3f(3f, 3f, 3f),
-                        new AxisAngle4f(0.56165f, 0f, 0f, 0.82737f)
+                        new Quaternionf(0.56165f, 0f, 0f, 0.82737f)
                     )
                 );
 
@@ -208,15 +215,16 @@ public final class GiantZombie extends Monster {
                     axe.setInterpolationDelay(0);
                     axe.setTransformation(
                         new Transformation(
-                            new Vector3f(-0.8f, 0, 2.425f),
-                            new AxisAngle4f(),
+                            new Vector3f(-0.8f, 0, -1.25f),
+                            new Quaternionf(),
                             new Vector3f(3f, 3f, 3f),
-                            new AxisAngle4f()
+                            new Quaternionf()
                         )
                     );
-                    attacking = false;      // 挥斧动画结束，允许下一次攻击
-                }, 3);
-            }, 14);
+
+                    animationTask = Bukkit.getScheduler().runTaskLater(monster.plugin, () -> attacking = false, 20);
+                }, 10);
+            }, 30);
 
             attackTask = Bukkit.getScheduler().runTaskLater(monster.plugin, () -> {
                 DamageSource source = DamageSource.builder(DamageType.MOB_ATTACK)
@@ -224,7 +232,9 @@ public final class GiantZombie extends Monster {
                     .withDirectEntity(zombie)
                     .build();
                 getPlayersInAttackRange(zombie).forEach(p -> p.damage(30, source));
-            }, 16);
+                var loc = zombie.getLocation();
+                loc.getWorld().playSound(loc, Sound.ENTITY_PLAYER_ATTACK_CRIT, SoundCategory.HOSTILE, 2f, 1.5f);
+            }, 34);
         }
 
         public boolean isAttacking() {
@@ -243,10 +253,10 @@ public final class GiantZombie extends Monster {
             axe.setInterpolationDelay(0);
             axe.setTransformation(
                 new Transformation(
-                    new Vector3f(-0.8f, 0, 2.425f),
-                    new AxisAngle4f(),
+                    new Vector3f(-0.8f, 0, -1.25f),
+                    new Quaternionf(),
                     new Vector3f(3f, 3f, 3f),
-                    new AxisAngle4f()
+                    new Quaternionf()
                 )
             );
         }
@@ -268,7 +278,7 @@ public final class GiantZombie extends Monster {
         ZombieInstance ins = zombieInstances.get(zombie);
         if (ins != null) {
             ins.axe.teleport(event.getTo());
-            ins.axe.setRotation(zombie.getBodyYaw(), 0);
+            ins.axe.setRotation(zombie.getYaw(), 90);
         }
     }
 }
