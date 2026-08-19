@@ -801,21 +801,24 @@ public final class PvzMode {
     }
 
     /** 手动驱动怪物向本路基地推进（AI 已关闭，移动完全由这里接管）。
-     *  速度 = 移动速度属性（已乘 0.75 倍）× 1.1（补偿实体速度每 tick 的空气阻力衰减）。 */
+     *  注意：noAi 实体（setAI(false)）不会消费 velocity（原版 travel 被跳过），
+     *  因此用每 tick 等步长 teleport 推进：步长 = 移动速度属性（已乘 0.75 倍）。
+     *  场地为平坦数字路，无碰撞考虑；玩家挡路由近战判定先行拦截（攻击停步）。 */
     private void moveToBase(Mob mob, PvzLane lane) {
-        org.bukkit.util.Vector dir = lane.base().toVector().subtract(mob.getLocation().toVector());
+        Location from = mob.getLocation();
+        org.bukkit.util.Vector dir = lane.base().toVector().subtract(from.toVector());
         dir.setY(0);
         if (dir.lengthSquared() < 0.04) {
-            stopMob(mob);
-            return;
+            return;   // 已在基地附近（到达判定由调用方处理）
         }
         dir.normalize();
         AttributeInstance speedAttr = mob.getAttribute(Attribute.MOVEMENT_SPEED);
-        double speed = speedAttr != null ? speedAttr.getValue() : 0.23;
-        double vel = speed * 1.1;
-        mob.setVelocity(new org.bukkit.util.Vector(dir.getX() * vel, 0, dir.getZ() * vel));
+        double step = speedAttr != null ? speedAttr.getValue() : 0.23;
+        Location next = from.clone().add(dir.clone().multiply(step));
+        next.setY(from.getY());
+        mob.teleport(next);
         float yaw = (float) Math.toDegrees(Math.atan2(-dir.getX(), dir.getZ()));
-        mob.setRotation(Location.normalizeYaw(yaw), mob.getLocation().getPitch());
+        mob.setRotation(Location.normalizeYaw(yaw), from.getPitch());
     }
 
     /** 使怪物面向目标位置（水平方向），用于近战攻击时面向玩家。 */
