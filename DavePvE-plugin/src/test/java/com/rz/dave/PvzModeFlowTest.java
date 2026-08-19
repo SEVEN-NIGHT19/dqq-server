@@ -132,13 +132,15 @@ class PvzModeFlowTest {
         assertTrue(pvz.isPlaying(a) && pvz.isPlaying(b));
         String status = pvz.statusSummary();
         assertTrue(status.contains("1路") && status.contains("存活玩家 2"), status);
-        // 新职业池：机枪射手/寒冰射手/坚果 之一；射手发发射器武器
+        // 新职业池：5 个职业之一；射手发武器（发射器或狙击镜）
         PvzClass clazz = pvz.classOf(a);
         assertNotNull(clazz);
         assertTrue(clazz == PvzClass.MACHINE_GUNNER || clazz == PvzClass.ICE_SHOOTER
-                || clazz == PvzClass.WALLNUT, "职业应来自新职业池");
+                || clazz == PvzClass.WALLNUT || clazz == PvzClass.SNIPER
+                || clazz == PvzClass.DUAL_SHOOTER, "职业应来自新职业池");
         if (clazz.hasWeapon()) {
-            assertTrue(a.getInventory().contains(Material.DISPENSER), "射手职业应有发射器武器");
+            assertTrue(a.getInventory().contains(Material.DISPENSER)
+                    || a.getInventory().contains(Material.SPYGLASS), "射手职业应有武器");
         }
         assertEquals(clazz == PvzClass.WALLNUT ? 120.0 : 40.0, a.getMaxHealth(), 0.001,
                 "玩家默认 40 点血，坚果 120 点血");

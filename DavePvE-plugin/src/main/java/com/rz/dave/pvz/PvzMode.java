@@ -32,6 +32,10 @@ import org.bukkit.scoreboard.Objective;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.entity.BlockDisplay;
+import org.bukkit.entity.DragonFireball;
+import org.bukkit.entity.LargeFireball;
+import org.bukkit.entity.Projectile;
+import org.bukkit.entity.SmallFireball;
 import org.bukkit.entity.Snowball;
 import org.bukkit.util.Transformation;
 import org.joml.AxisAngle4f;
@@ -112,8 +116,14 @@ public final class PvzMode {
     public static final long SHOOTER_COOLDOWN_MS = 1400L;     // 射手攻击冷却 1.4 秒
     public static final double SHOOTER_BULLET_DAMAGE = 2.0;   // 每发子弹伤害
     public static final double SHOOTER_BULLET_SPEED = 1.8;    // 子弹基础速度
-    public static final int MACHINE_BURST_COUNT = 4;          // 机枪射手一次连发数
+    public static final int MACHINE_BURST_COUNT = 5;          // 机枪射手一次连发数（4→5）
     public static final int ICE_BURST_COUNT = 2;              // 寒冰射手一次连发数
+    public static final int DUAL_BURST_COUNT = 2;             // 双发射手一次连发数（普豌双发）
+    public static final long DUAL_BULLET_INTERVAL_TICKS = 4;  // 双发两弹发射间隔
+    public static final long SNIPER_COOLDOWN_MS = 7000L;      // 狙击豌豆冷却 7 秒
+    public static final double SNIPER_BULLET_DAMAGE = 35.0;   // 狙击对无甲怪伤害（大模式狙豌基础值）
+    public static final double SNIPER_BULLET_SPEED = 15.0;    // 大模式高速子弹速度
+    public static final double SNIPER_IGNORE_ARMOR_DAMAGE = 9999.0; // 无视二/三类防具：直接打空本体
     public static final double ICICLE_CHANCE = 0.10;          // 每次射击额外冰棱概率 10%
     public static final double ICICLE_DAMAGE = 4.0;           // 冰棱穿透伤害
     public static final double ICICLE_SCALE = 0.5;            // 冰棱模型为 0.5 倍方块
@@ -124,6 +134,23 @@ public final class PvzMode {
     public static final int ICE_FREEZE_TICKS = 36;            // 冻结 1.8 秒
     public static final double ICE_FREEZE_BONUS = 2.0;        // 已有缓慢 → 冻结时的额外伤害
     public static final double ICE_FROZEN_BONUS = 4.0;        // 正在冻结 → 重置冻结时的额外伤害
+
+    // ---- 双发射手七种子弹数值（都是 1/7 概率）----
+    public static final double FIRE_SMALL_DAMAGE = 4.0;       // 火豆：小火焰弹
+    public static final double FIRE_SMALL_SPLASH = 1.5;
+    public static final double FIRE_ORANGE_DAMAGE = 7.0;      // 橙色火豆：恶魂大火焰弹
+    public static final double FIRE_ORANGE_SPLASH = 3.0;
+    public static final double FIRE_ORANGE_ARMOR_BONUS = 7.0; // 对二类防具额外伤害（无溅射）
+    public static final double FIRE_RED_DAMAGE = 11.0;        // 红色火豆：红色玻璃 0.3 倍
+    public static final double FIRE_RED_SPLASH = 5.0;
+    public static final double FIRE_RED_ARMOR_BONUS = 11.0;
+    public static final double ICEFIRE_DAMAGE = 4.0;          // 冰火豌豆：紫色玻璃 0.3 倍（减速同冰豆）
+    public static final double ICEFIRE_SPLASH = 1.5;
+    public static final double ICEFIRE_ARMOR_BONUS = 4.0;
+    public static final double DRAGON_DAMAGE = 7.0;           // 幽蓝火焰豌豆：龙息弹（减速同冰豆）
+    public static final double DRAGON_SPLASH = 3.0;
+    public static final double DRAGON_ARMOR_BONUS = 7.0;
+    public static final int DISPLAY_BULLET_MAX_TICKS = 100;   // 方块子弹（玻璃弹）最长飞行 5 秒
 
     private final NamespacedKey shooterKey;      // 武器标记（string: machine/ice）
     private final NamespacedKey bulletKey;       // PVZ 子弹标记（byte）
@@ -824,19 +851,25 @@ public final class PvzMode {
     }
 
     /** 是否为 PVZ 子弹（带 PVZ 子弹标记的投射物）。 */
-    public boolean isPvzBullet(org.bukkit.entity.Projectile projectile) {
-        return projectile instanceof Snowball
+    public boolean isPvzBullet(Projectile projectile) {
+        return projectile != null
                 && projectile.getPersistentDataContainer().has(bulletKey, PersistentDataType.BYTE);
     }
 
-    /** PVZ 子弹命中怪物：按子弹类型结算伤害/冰冻。 */
-    public void onShooterBulletHit(org.bukkit.entity.Projectile projectile, Mob mob) {
-        if (!(projectile instanceof Snowball ball) || mob == null || !isPvzMonster(mob)) {
+    /** 是否携带二类（帽子）/三类（手持盾）防具：狙击豌豆无视其伤害直击本体。 */
+    public boolean hasArmorDefense(Mob mob) {
+        return mob.getScoreboardTags().contains(MonsterManager.TAG_ARMORED)
+                || mob.getScoreboardTags().contains(MonsterManager.TAG_SHIELDED);
+    }
+
+    /** PVZ 子弹命中怪物（普通投射物路径）：按子弹类型结算。 */
+    public void onShooterBulletHit(Projectile projectile, Mob mob) {
+        if (mob == null || !isPvzMonster(mob) || !isPvzBullet(projectile)) {
             return;
         }
-        String kind = ball.getPersistentDataContainer().get(bulletKindKey, PersistentDataType.STRING);
-        Double damage = ball.getPersistentDataContainer().get(bulletDamageKey, PersistentDataType.DOUBLE);
-        String owner = ball.getPersistentDataContainer().get(bulletOwnerKey, PersistentDataType.STRING);
+        String kind = projectile.getPersistentDataContainer().get(bulletKindKey, PersistentDataType.STRING);
+        Double damage = projectile.getPersistentDataContainer().get(bulletDamageKey, PersistentDataType.DOUBLE);
+        String owner = projectile.getPersistentDataContainer().get(bulletOwnerKey, PersistentDataType.STRING);
         if (kind == null || damage == null || owner == null) {
             return;
         }
@@ -844,13 +877,61 @@ public final class PvzMode {
         if (shooter == null) {
             return;
         }
-        if ("ice".equals(kind)) {
-            applyIceHit(mob, damage, shooter);
-        } else {
-            mob.damage(damage, shooter);
+        resolveBulletHit(kind, mob, damage, shooter);
+    }
+
+    /** 子弹结算（投射物命中与显示子弹每 tick 命中共用）。 */
+    private void resolveBulletHit(String kind, Mob mob, double damage, Player shooter) {
+        switch (kind) {
+            case "machine" -> damagePvzMonster(mob, damage, shooter);
+            case "ice", "icicle" -> applyIceHit(mob, damage, shooter);
+            case "fire_small" -> {
+                damagePvzMonster(mob, FIRE_SMALL_DAMAGE, shooter);
+                splashAround(mob, FIRE_SMALL_SPLASH, shooter);
+            }
+            case "fire_orange" -> {
+                damagePvzMonster(mob, FIRE_ORANGE_DAMAGE
+                        + (hasArmorDefense(mob) ? FIRE_ORANGE_ARMOR_BONUS : 0.0), shooter);
+                splashAround(mob, FIRE_ORANGE_SPLASH, shooter);
+            }
+            case "fire_red" -> {
+                damagePvzMonster(mob, FIRE_RED_DAMAGE
+                        + (hasArmorDefense(mob) ? FIRE_RED_ARMOR_BONUS : 0.0), shooter);
+                splashAround(mob, FIRE_RED_SPLASH, shooter);
+            }
+            case "ice_fire" -> {
+                applyIceHit(mob, ICEFIRE_DAMAGE
+                        + (hasArmorDefense(mob) ? ICEFIRE_ARMOR_BONUS : 0.0), shooter);
+                splashAround(mob, ICEFIRE_SPLASH, shooter);
+            }
+            case "dragon" -> {
+                applyIceHit(mob, DRAGON_DAMAGE
+                        + (hasArmorDefense(mob) ? DRAGON_ARMOR_BONUS : 0.0), shooter);
+                splashAround(mob, DRAGON_SPLASH, shooter);
+            }
+            case "sniper" -> damagePvzMonster(mob,
+                    hasArmorDefense(mob) ? SNIPER_IGNORE_ARMOR_DAMAGE : damage, shooter);
+            default -> damagePvzMonster(mob, damage, shooter);
         }
-        // 伤害已结算（此时血量为新值），立即检查破甲，避免依赖后续事件
+    }
+
+    /** 对 PVZ 怪物结算伤害：清空无敌帧保证连发/溅射全部生效，随后检查破甲。 */
+    private void damagePvzMonster(Mob mob, double damage, Player shooter) {
+        mob.setNoDamageTicks(0);
+        mob.damage(damage, shooter);
         maybeBreakArmor(mob);
+    }
+
+    /** 溅射：命中怪附近 1 格内其他 PVZ 怪物吃纯溅射伤害（不带额外、不带减速）。 */
+    private void splashAround(Mob hit, double splash, Player shooter) {
+        for (Entity entity : hit.getWorld().getNearbyEntities(hit.getLocation(), 1.0, 1.0, 1.0)) {
+            if (entity == hit) {
+                continue;
+            }
+            if (entity instanceof Mob mob && isPvzMonster(mob)) {
+                damagePvzMonster(mob, splash, shooter);
+            }
+        }
     }
 
     /**
@@ -860,14 +941,14 @@ public final class PvzMode {
     private void applyIceHit(Mob mob, double damage, Player shooter) {
         if (isFrozen(mob)) {
             freeze(mob);
-            mob.damage(damage + ICE_FROZEN_BONUS, shooter);
+            damagePvzMonster(mob, damage + ICE_FROZEN_BONUS, shooter);
         } else if (mob.hasPotionEffect(PotionEffectType.SLOWNESS)) {
             freeze(mob);
-            mob.damage(damage + ICE_FREEZE_BONUS, shooter);
+            damagePvzMonster(mob, damage + ICE_FREEZE_BONUS, shooter);
         } else {
             mob.addPotionEffect(new PotionEffect(
                     PotionEffectType.SLOWNESS, ICE_SLOW_DURATION, ICE_SLOW_AMPLIFIER));
-            mob.damage(damage, shooter);
+            damagePvzMonster(mob, damage, shooter);
         }
     }
 
@@ -889,7 +970,7 @@ public final class PvzMode {
         }, ICE_FREEZE_TICKS);
     }
 
-    /** 右键发射器武器入口（机枪射手/寒冰射手）。 */
+    /** 右键发射器武器入口（机枪射手/寒冰射手/狙击豌豆/双发射手，统一右键）。 */
     public void fireShooter(Player player) {
         if (!isPlaying(player)) {
             return;
@@ -902,78 +983,196 @@ public final class PvzMode {
         if (kind == null) {
             return;
         }
-        boolean ice = "ice".equals(kind);
         long now = System.currentTimeMillis();
+        long cooldownMs = "sniper".equals(kind) ? SNIPER_COOLDOWN_MS : SHOOTER_COOLDOWN_MS;
         long last = shooterCooldowns.getOrDefault(player.getUniqueId(), 0L);
-        long remaining = SHOOTER_COOLDOWN_MS - (now - last);
+        long remaining = cooldownMs - (now - last);
+        String display = switch (kind) {
+            case "sniper" -> "狙击豌豆";
+            case "dual" -> "双发射手";
+            case "ice" -> "寒冰射手";
+            default -> "机枪射手";
+        };
         if (remaining > 0) {
             long seconds = Math.max(1, (remaining + 999) / 1000);
-            player.sendActionBar(ChatColor.YELLOW + "【"
-                    + (ice ? "寒冰射手" : "机枪射手") + "】冷却中，还需 " + seconds + " 秒");
+            player.sendActionBar(ChatColor.YELLOW + "【" + display + "】冷却中，还需 " + seconds + " 秒");
             return;
         }
         shooterCooldowns.put(player.getUniqueId(), now);
-        int count = ice ? ICE_BURST_COUNT : MACHINE_BURST_COUNT;
-        for (int i = 0; i < count; i++) {
-            final int shot = i;
-            Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                if (!player.isOnline() || !isPlaying(player)) {
-                    return;
+        Runnable burst = () -> {
+            if (!player.isOnline() || !isPlaying(player)) {
+                return;
+            }
+            spawnBullet(player, kind);
+        };
+        switch (kind) {
+            case "sniper" -> burst.run();
+            case "dual" -> {
+                for (int i = 0; i < DUAL_BURST_COUNT; i++) {
+                    final int shot = i;
+                    Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                        if (!player.isOnline() || !isPlaying(player)) {
+                            return;
+                        }
+                        // 每发子弹独立 1/7 随机（可能出现两个同种弹）
+                        spawnBullet(player, pickDualKind(Math.random()));
+                    }, shot * DUAL_BULLET_INTERVAL_TICKS);
                 }
-                spawnShooterBullet(player, ice);
-            }, shot * 4L);
+            }
+            case "ice" -> {
+                for (int i = 0; i < ICE_BURST_COUNT; i++) {
+                    final int shot = i;
+                    Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                        if (!player.isOnline() || !isPlaying(player)) {
+                            return;
+                        }
+                        spawnBullet(player, "ice");
+                    }, shot * DUAL_BULLET_INTERVAL_TICKS);
+                }
+                if (Math.random() < ICICLE_CHANCE) {
+                    spawnIcicle(player);
+                }
+            }
+            default -> {
+                for (int i = 0; i < MACHINE_BURST_COUNT; i++) {
+                    final int shot = i;
+                    Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                        if (!player.isOnline() || !isPlaying(player)) {
+                            return;
+                        }
+                        spawnBullet(player, "machine");
+                    }, shot * DUAL_BULLET_INTERVAL_TICKS);
+                }
+            }
         }
-        if (ice && Math.random() < ICICLE_CHANCE) {
-            spawnIcicle(player);
-        }
-        player.sendActionBar(ChatColor.GREEN + "【" + (ice ? "寒冰射手" : "机枪射手") + "】已发射！");
+        player.sendActionBar(ChatColor.GREEN + "【" + display + "】已发射！");
     }
 
-    /** 发射一颗普通子弹（机枪豌豆/冰弹）。 */
-    private void spawnShooterBullet(Player player, boolean ice) {
+    /** 双发射手七种子弹：1/7 等概率（纯逻辑可单测）。 */
+    public static String pickDualKind(double roll) {
+        if (roll < 1.0 / 7) {
+            return "machine";
+        }
+        if (roll < 2.0 / 7) {
+            return "ice";
+        }
+        if (roll < 3.0 / 7) {
+            return "fire_small";
+        }
+        if (roll < 4.0 / 7) {
+            return "fire_orange";
+        }
+        if (roll < 5.0 / 7) {
+            return "fire_red";
+        }
+        if (roll < 6.0 / 7) {
+            return "ice_fire";
+        }
+        return "dragon";
+    }
+
+    /** 发射 PVZ 子弹（按类型生成对应实体与模型）。 */
+    private void spawnBullet(Player player, String kind) {
         Location eye = player.getEyeLocation();
         org.bukkit.util.Vector dir = player.getLocation().getDirection().clone().normalize();
-        eye.getWorld().spawn(eye, Snowball.class, s -> {
-            s.setItem(new ItemStack(ice ? Material.SNOWBALL : Material.SLIME_BALL));
-            s.setVelocity(dir.multiply(SHOOTER_BULLET_SPEED));
-            s.setShooter(player);
-            s.setGravity(false);
-            s.getPersistentDataContainer().set(bulletKey, PersistentDataType.BYTE, (byte) 1);
-            s.getPersistentDataContainer().set(bulletKindKey, PersistentDataType.STRING, ice ? "ice" : "machine");
-            s.getPersistentDataContainer().set(bulletDamageKey, PersistentDataType.DOUBLE, SHOOTER_BULLET_DAMAGE);
-            s.getPersistentDataContainer().set(bulletOwnerKey, PersistentDataType.STRING,
-                    player.getUniqueId().toString());
-        });
+        switch (kind) {
+            case "fire_small" -> eye.getWorld().spawn(eye, SmallFireball.class, f -> {
+                f.setDirection(dir.clone().multiply(SHOOTER_BULLET_SPEED));
+                f.setShooter(player);
+                f.setYield(0.0f);
+                f.setIsIncendiary(false);
+                markBullet(f, kind, FIRE_SMALL_DAMAGE, player);
+            });
+            case "fire_orange" -> eye.getWorld().spawn(eye, LargeFireball.class, f -> {
+                f.setDirection(dir.clone().multiply(SHOOTER_BULLET_SPEED));
+                f.setShooter(player);
+                f.setYield(0.0f);
+                f.setIsIncendiary(false);
+                markBullet(f, kind, FIRE_ORANGE_DAMAGE, player);
+            });
+            case "dragon" -> eye.getWorld().spawn(eye, DragonFireball.class, f -> {
+                f.setDirection(dir.clone().multiply(SHOOTER_BULLET_SPEED));
+                f.setShooter(player);
+                markBullet(f, kind, DRAGON_DAMAGE, player);
+            });
+            case "fire_red" -> spawnDisplayBullet(player, Material.RED_STAINED_GLASS,
+                    0.3, "fire_red", FIRE_RED_DAMAGE, 1.0, false);
+            case "ice_fire" -> spawnDisplayBullet(player, Material.PURPLE_STAINED_GLASS,
+                    0.3, "ice_fire", ICEFIRE_DAMAGE, 1.0, false);
+            case "sniper" -> eye.getWorld().spawn(eye, Snowball.class, s -> {
+                s.setItem(new ItemStack(Material.ARROW));
+                s.setVelocity(dir.multiply(SNIPER_BULLET_SPEED));
+                s.setShooter(player);
+                s.setGravity(false);
+                markBullet(s, kind, SNIPER_BULLET_DAMAGE, player);
+            });
+            case "ice" -> eye.getWorld().spawn(eye, Snowball.class, s -> {
+                s.setItem(new ItemStack(Material.SNOWBALL));
+                s.setVelocity(dir.multiply(SHOOTER_BULLET_SPEED));
+                s.setShooter(player);
+                s.setGravity(false);
+                markBullet(s, kind, SHOOTER_BULLET_DAMAGE, player);
+            });
+            default -> eye.getWorld().spawn(eye, Snowball.class, s -> {
+                s.setItem(new ItemStack(Material.SLIME_BALL));
+                s.setVelocity(dir.multiply(SHOOTER_BULLET_SPEED));
+                s.setShooter(player);
+                s.setGravity(false);
+                markBullet(s, kind, SHOOTER_BULLET_DAMAGE, player);
+            });
+        }
+    }
+
+    /** 给子弹实体打上 PVZ 子弹标记（类型/伤害/发射者）。 */
+    private void markBullet(Projectile bullet, String kind, double damage, Player player) {
+        bullet.getPersistentDataContainer().set(bulletKey, PersistentDataType.BYTE, (byte) 1);
+        bullet.getPersistentDataContainer().set(bulletKindKey, PersistentDataType.STRING, kind);
+        bullet.getPersistentDataContainer().set(bulletDamageKey, PersistentDataType.DOUBLE, damage);
+        bullet.getPersistentDataContainer().set(bulletOwnerKey, PersistentDataType.STRING,
+                player.getUniqueId().toString());
     }
 
     /** 寒冰射手 10% 概率的额外冰棱：0.5 倍浮冰方块、1.5 倍弹速、无限穿透。
      *  注意：BlockDisplay 的 velocity 不保证被服务器驱动（实测会停在原地），
-     *  因此不依赖 velocity，由 trackIcicle 每 tick 位移推进。 */
+     *  因此显示类子弹统一由 trackDisplayBullet 每 tick 位移推进。 */
     private void spawnIcicle(Player player) {
+        spawnDisplayBullet(player, Material.PACKED_ICE, ICICLE_SCALE,
+                "icicle", ICICLE_DAMAGE, ICICLE_SPEED_MULTIPLIER, true);
+    }
+
+    /** 显示类子弹（冰棱/红玻璃/紫玻璃）：BlockDisplay 造型，每 tick 位移推进。 */
+    private void spawnDisplayBullet(Player player, Material block, double scale,
+                                    String kind, double damage, double speedMultiplier,
+                                    boolean pierce) {
         org.bukkit.util.Vector dir = player.getLocation().getDirection().clone().normalize();
         Location eye = player.getEyeLocation();
         BlockDisplay display = eye.getWorld().spawn(eye, BlockDisplay.class, d -> {
-            d.setBlock(Bukkit.createBlockData(Material.PACKED_ICE));
+            d.setBlock(Bukkit.createBlockData(block));
             d.setTransformation(new Transformation(
                     new Vector3f(), new AxisAngle4f(),
-                    new Vector3f((float) ICICLE_SCALE, (float) ICICLE_SCALE, (float) ICICLE_SCALE),
+                    new Vector3f((float) scale, (float) scale, (float) scale),
                     new AxisAngle4f()));
             d.setGravity(false);
             d.setPersistent(true);
         });
-        trackIcicle(display, player, dir);
+        trackDisplayBullet(display, player, dir, kind, damage, speedMultiplier, pierce);
     }
 
-    /** 冰棱飞行跟踪：每 tick 位移推进（1.5 倍弹速，分 3 子步防穿透漏判），
-     *  命中附近怪物（穿透标记防重复伤害），5 秒或失效后消失。 */
-    private void trackIcicle(BlockDisplay display, Player player, org.bukkit.util.Vector dir) {
+    /**
+     * 显示子弹飞行跟踪：每 tick 位移推进（分 3 子步防高速漏判），命中附近怪物。
+     * pierce=true 穿透（命中不消失，标记防重复伤害）；否则命中第一个即消失。
+     * 5 秒或失效后消失。
+     */
+    private void trackDisplayBullet(BlockDisplay display, Player player, org.bukkit.util.Vector dir,
+                                    String kind, double damage, double speedMultiplier,
+                                    boolean pierce) {
         Set<UUID> hit = new java.util.HashSet<>();
         icicleHits.put(display.getUniqueId(), hit);
         long born = Bukkit.getCurrentTick();
-        final double step = SHOOTER_BULLET_SPEED * ICICLE_SPEED_MULTIPLIER;
+        final double step = SHOOTER_BULLET_SPEED * speedMultiplier;
         Bukkit.getScheduler().runTaskTimer(plugin, task -> {
             if (!display.isValid() || display.isDead()
-                    || Bukkit.getCurrentTick() - born > ICICLE_MAX_TICKS) {
+                    || Bukkit.getCurrentTick() - born > DISPLAY_BULLET_MAX_TICKS) {
                 display.remove();
                 icicleHits.remove(display.getUniqueId());
                 task.cancel();
@@ -988,13 +1187,20 @@ public final class PvzMode {
                         continue;
                     }
                     hit.add(mob.getUniqueId());
-                    applyIceHit(mob, ICICLE_DAMAGE, player);
+                    resolveBulletHit(kind, mob, damage, player);
+                    if (!pierce) {
+                        display.remove();
+                        icicleHits.remove(display.getUniqueId());
+                        task.cancel();
+                        return;
+                    }
                 }
             }
         }, 1L, 1L);
     }
 
-    /** 带甲僵尸破甲：血量跌破阈值时摘掉帽子（路障/铁桶僵尸）；用 AIR 而非 null 确保移除。 */
+    /** 带甲僵尸破甲：血量跌破阈值时摘掉帽子（路障/铁桶僵尸）；用 AIR 而非 null 确保移除，
+     *  摘帽后移除二类防具标签（防具已损坏，狙击不再视其为带甲怪）。 */
     public void maybeBreakArmor(Mob mob) {
         if (!mob.getScoreboardTags().contains(MonsterManager.TAG_ARMORED)) {
             return;
@@ -1006,16 +1212,26 @@ public final class PvzMode {
                 && mob.getEquipment().getHelmet().getType() != Material.AIR) {
             mob.getEquipment().setHelmet(new ItemStack(Material.AIR));
             mob.getEquipment().setHelmetDropChance(0.0f);
+            mob.removeScoreboardTag(MonsterManager.TAG_ARMORED);
         }
     }
 
-    /** 开局为射手职业的武器打上射击标记。 */
+    /** 开局为射手职业的武器打上射击标记（机枪/寒冰/狙击/双发）。 */
     private void markShooterWeapon(Player player, PvzClass clazz) {
+        String kind = switch (clazz) {
+            case ICE_SHOOTER -> "ice";
+            case SNIPER -> "sniper";
+            case DUAL_SHOOTER -> "dual";
+            default -> "machine";
+        };
         for (ItemStack item : player.getInventory().getContents()) {
-            if (item != null && item.getType() == Material.DISPENSER) {
+            if (item == null) {
+                continue;
+            }
+            Material type = item.getType();
+            if (type == Material.DISPENSER || type == Material.SPYGLASS) {
                 item.editMeta(meta -> meta.getPersistentDataContainer().set(
-                        shooterKey, PersistentDataType.STRING,
-                        clazz == PvzClass.ICE_SHOOTER ? "ice" : "machine"));
+                        shooterKey, PersistentDataType.STRING, kind));
             }
         }
     }
