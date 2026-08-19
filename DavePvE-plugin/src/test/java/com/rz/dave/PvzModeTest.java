@@ -85,11 +85,12 @@ class PvzModeTest {
     }
 
     @Test
-    void randomClassIsAlwaysOneOfThree() {
+    void randomClassIsAlwaysOneOfFive() {
         for (int i = 0; i < 200; i++) {
             PvzClass clazz = PvzClass.random();
             assertTrue(clazz == PvzClass.MACHINE_GUNNER || clazz == PvzClass.ICE_SHOOTER
-                    || clazz == PvzClass.WALLNUT);
+                    || clazz == PvzClass.WALLNUT || clazz == PvzClass.SNIPER
+                    || clazz == PvzClass.DUAL_SHOOTER);
         }
     }
 
@@ -98,12 +99,38 @@ class PvzModeTest {
         assertEquals(PvzClass.MACHINE_GUNNER, PvzClass.fromRandomIndex(0));
         assertEquals(PvzClass.ICE_SHOOTER, PvzClass.fromRandomIndex(1));
         assertEquals(PvzClass.WALLNUT, PvzClass.fromRandomIndex(2));
-        assertEquals(PvzClass.MACHINE_GUNNER, PvzClass.fromRandomIndex(3));
+        assertEquals(PvzClass.SNIPER, PvzClass.fromRandomIndex(3));
+        assertEquals(PvzClass.DUAL_SHOOTER, PvzClass.fromRandomIndex(4));
+        assertEquals(PvzClass.MACHINE_GUNNER, PvzClass.fromRandomIndex(5));
+    }
+
+    @Test
+    void sniperAndDualKits() {
+        ItemStack sniper = PvzClass.SNIPER.createKit()[0];
+        assertEquals(Material.SPYGLASS, sniper.getType(), "狙击豌豆武器为狙击镜");
+        assertTrue(sniper.getItemMeta().isUnbreakable());
+        ItemStack dual = PvzClass.DUAL_SHOOTER.createKit()[0];
+        assertEquals(Material.DISPENSER, dual.getType(), "双发射手武器为发射器（大模式双发）");
+    }
+
+    @Test
+    void sniperAndDualArmorColors() {
+        org.bukkit.inventory.meta.LeatherArmorMeta sniperHelmet = (org.bukkit.inventory.meta.LeatherArmorMeta)
+                PvzClass.SNIPER.createArmor()[3].getItemMeta();
+        assertEquals(org.bukkit.Color.fromRGB(0x000000), sniperHelmet.getColor(), "狙击头盔应为黑色");
+        org.bukkit.inventory.meta.LeatherArmorMeta sniperChest = (org.bukkit.inventory.meta.LeatherArmorMeta)
+                PvzClass.SNIPER.createArmor()[2].getItemMeta();
+        org.bukkit.inventory.meta.LeatherArmorMeta dualHelmet = (org.bukkit.inventory.meta.LeatherArmorMeta)
+                PvzClass.DUAL_SHOOTER.createArmor()[3].getItemMeta();
+        org.bukkit.inventory.meta.LeatherArmorMeta dualChest = (org.bukkit.inventory.meta.LeatherArmorMeta)
+                PvzClass.DUAL_SHOOTER.createArmor()[2].getItemMeta();
+        assertTrue(!sniperChest.getColor().equals(sniperHelmet.getColor()), "狙击套与帽子颜色应不同");
+        assertTrue(!dualChest.getColor().equals(dualHelmet.getColor()), "双发套与帽子颜色应不同");
     }
 
     @Test
     void randomClassDistributionIsUniform() {
-        // 独立同分布验证：9000 次采样，每个职业占比应接近 1/3（阈值取 ±5% 防抖动）
+        // 独立同分布验证：9000 次采样，5 个职业每个占比应接近 1/5（阈值取 ±5% 防抖动）
         int[] counts = new int[PvzClass.values().length];
         int n = 9000;
         for (int i = 0; i < n; i++) {
@@ -111,8 +138,8 @@ class PvzModeTest {
         }
         for (int count : counts) {
             double ratio = (double) count / n;
-            assertTrue(ratio > 0.28 && ratio < 0.39,
-                    "职业分布应接近 1/3，实际 " + ratio);
+            assertTrue(ratio > 0.15 && ratio < 0.25,
+                    "职业分布应接近 1/5，实际 " + ratio);
         }
     }
 
@@ -188,6 +215,35 @@ class PvzModeTest {
         assertEquals(3, PvzMode.spawnsPerWave(0));
         assertEquals(8, PvzMode.spawnsPerWave(5));
         assertEquals(25.0, PvzMode.BLIND_BOX_HEALTH, 1e-9, "盲盒僵尸血量固定 25");
+        assertEquals(5, PvzMode.MACHINE_BURST_COUNT, "机枪射手 5 连发");
+        assertEquals(7000L, PvzMode.SNIPER_COOLDOWN_MS, "狙击豌豆冷却 7 秒");
+    }
+
+    @Test
+    void dualKindDistributionIsSevenEqual() {
+        // 七种子弹各 1/7：豌豆/冰豆/火豆/橙火豆/红火豆/冰火豌豆/幽蓝火焰豌豆
+        assertEquals("machine", PvzMode.pickDualKind(0.0));
+        assertEquals("machine", PvzMode.pickDualKind(1.0 / 7 - 0.001));
+        assertEquals("ice", PvzMode.pickDualKind(1.0 / 7));
+        assertEquals("ice", PvzMode.pickDualKind(2.0 / 7 - 0.001));
+        assertEquals("fire_small", PvzMode.pickDualKind(2.0 / 7));
+        assertEquals("fire_small", PvzMode.pickDualKind(3.0 / 7 - 0.001));
+        assertEquals("fire_orange", PvzMode.pickDualKind(3.0 / 7));
+        assertEquals("fire_orange", PvzMode.pickDualKind(4.0 / 7 - 0.001));
+        assertEquals("fire_red", PvzMode.pickDualKind(4.0 / 7));
+        assertEquals("fire_red", PvzMode.pickDualKind(5.0 / 7 - 0.001));
+        assertEquals("ice_fire", PvzMode.pickDualKind(5.0 / 7));
+        assertEquals("ice_fire", PvzMode.pickDualKind(6.0 / 7 - 0.001));
+        assertEquals("dragon", PvzMode.pickDualKind(6.0 / 7));
+        assertEquals("dragon", PvzMode.pickDualKind(0.9999));
+    }
+
+    @Test
+    void armorTypeTagsDefined() {
+        assertEquals("pvz_armored", com.rz.dave.monster.MonsterManager.TAG_ARMORED, "二类防具（帽子）");
+        assertEquals("pvz_shield_armored", com.rz.dave.monster.MonsterManager.TAG_SHIELDED, "三类防具（手持盾）");
+        assertEquals(0.7, com.rz.dave.monster.MonsterManager.MOVEMENT_SPEED_MULTIPLIER, 1e-9,
+                "全体怪物移速 0.7 倍");
     }
 
     @Test

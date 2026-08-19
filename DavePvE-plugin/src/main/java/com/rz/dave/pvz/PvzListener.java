@@ -2,6 +2,7 @@ package com.rz.dave.pvz;
 import com.rz.dave.DaveManager;
 
 import io.papermc.paper.event.entity.EntityKnockbackEvent;
+import com.destroystokyo.paper.event.entity.EnderDragonFireballHitEvent;
 import org.bukkit.GameMode;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Mob;
@@ -19,6 +20,7 @@ import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.EntityRegainHealthEvent;
 import org.bukkit.event.entity.EntityTargetEvent;
+import org.bukkit.event.entity.ExplosionPrimeEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
@@ -87,6 +89,23 @@ public final class PvzListener implements Listener {
     @EventHandler(ignoreCancelled = true)
     public void onExplode(EntityExplodeEvent event) {
         pvz.handleExplode(event);
+    }
+
+    /** PVZ 火球类子弹（烈焰人弹/恶魂弹）不产生爆炸破坏。 */
+    @EventHandler(ignoreCancelled = true)
+    public void onExplosionPrime(ExplosionPrimeEvent event) {
+        if (event.getEntity() instanceof Projectile projectile && pvz.isPvzBullet(projectile)) {
+            event.setCancelled(true);
+        }
+    }
+
+    /** PVZ 龙息弹命中：取消原版行为（不生成区域效果云、不做原版伤害），
+     *  命中结算统一由 ProjectileHitEvent 处理。 */
+    @EventHandler(ignoreCancelled = true)
+    public void onDragonFireballHit(EnderDragonFireballHitEvent event) {
+        if (pvz.isPvzBullet(event.getEntity())) {
+            event.setCancelled(true);
+        }
     }
 
     /** PVZ 怪物只索敌 PVZ 玩家，避免被经典模式玩家引走。 */

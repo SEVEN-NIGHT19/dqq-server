@@ -3,6 +3,8 @@ package com.rz.dave.monster;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
 import org.bukkit.World;
+import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.inventory.ItemStack;
@@ -31,6 +33,13 @@ public final class MonsterManager {
     public static final String TAG_SUMMON = "pvz_summon";
     /** 戴盔甲怪物的标签（路障/铁桶僵尸）：血量降到阈值后破甲（摘帽）。 */
     public static final String TAG_ARMORED = "pvz_armored";
+    /**
+     * 三类防具标签（铁门僵尸/梯子僵尸的盾牌类手持防具，当前版本尚未使用）：
+     * 狙击豌豆无视二类/三类防具直接攻击本体。
+     */
+    public static final String TAG_SHIELDED = "pvz_shield_armored";
+    /** 全体 PVZ 怪物移动速度倍数（相对原版基础速度）。 */
+    public static final double MOVEMENT_SPEED_MULTIPLIER = 0.7;
 
     /** 巨人僵尸：体型为原版僵尸的倍数（1.21 实体 scale 属性）。 */
     public static final double GIANT_ZOMBIE_SCALE = 4.0;
@@ -98,10 +107,20 @@ public final class MonsterManager {
         return factory.create(context);
     }
 
-    /** 统一生成入口：按注册的怪物类型生成实体。 */
+    /**
+     * 统一生成入口：按注册的怪物类型生成实体，并对全体 PVZ 怪物
+     * 统一把移动速度基础值降到原版的 0.7 倍（需求：怪物整体变慢）。
+     */
     public static LivingEntity spawn(MonsterType type, World world, Location loc,
                                      SpawnContext context) {
-        return create(type, context).spawn(world, loc);
+        LivingEntity entity = create(type, context).spawn(world, loc);
+        if (entity != null) {
+            AttributeInstance speed = entity.getAttribute(Attribute.MOVEMENT_SPEED);
+            if (speed != null) {
+                speed.setBaseValue(speed.getBaseValue() * MOVEMENT_SPEED_MULTIPLIER);
+            }
+        }
+        return entity;
     }
 
     /** 判断实体是否为 PVZ 归属怪物（带 {@value #TAG_MONSTER} 标签）。 */
