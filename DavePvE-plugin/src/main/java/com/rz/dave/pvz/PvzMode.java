@@ -32,6 +32,7 @@ import org.bukkit.scoreboard.Objective;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.entity.BlockDisplay;
+import org.bukkit.entity.Creeper;
 import org.bukkit.entity.DragonFireball;
 import org.bukkit.entity.LargeFireball;
 import org.bukkit.entity.Projectile;
@@ -88,8 +89,10 @@ public final class PvzMode {
     /** 每条路（每个队伍）玩家上限的默认值。 */
     public static final int DEFAULT_PLAYERS_PER_LANE = 5;
 
+    public static final double MOB_MELEE_RANGE = 2.0;         // 近战怪判定玩家挡路的水平范围
+    public static final double CREEPER_FUSE_RANGE = 3.0;      // 苦力怕路线上靠近玩家即炸的范围
+    public static final int MOB_ATTACK_INTERVAL_TICKS = 10;   // 怪物攻击/爆炸动作期（攻击瞬间停步）
     private static final int ARRIVAL_DISTANCE_SQ = 3; // ~1.7 格水平距离
-    private static final double TARGET_RANGE = 8.0;
     private static final int SPAWN_TIMER_STEP_TICKS = 20; // tick() 每秒执行一次
 
     private final Plugin plugin;
@@ -121,7 +124,7 @@ public final class PvzMode {
     public static final int DUAL_BURST_COUNT = 2;             // 双发射手一次连发数（普豌双发）
     public static final long DUAL_BULLET_INTERVAL_TICKS = 4;  // 双发两弹发射间隔
     public static final long SNIPER_COOLDOWN_MS = 7000L;      // 狙击豌豆冷却 7 秒
-    public static final double SNIPER_BULLET_DAMAGE = 35.0;   // 狙击对无甲怪伤害（大模式狙豌基础值）
+    public static final double SNIPER_BULLET_DAMAGE = 40.0;   // 狙击对无甲怪伤害
     public static final double SNIPER_BULLET_SPEED = 15.0;    // 大模式高速子弹速度
     public static final double SNIPER_IGNORE_ARMOR_DAMAGE = 9999.0; // 无视二/三类防具：直接打空本体
     public static final double ICICLE_CHANCE = 0.10;          // 每次射击额外冰棱概率 10%
@@ -172,6 +175,9 @@ public final class PvzMode {
     private int waveIndex;
     private long waveStartedTick;
     private BukkitTask tickTask;
+    private BukkitTask monsterTickTask;
+    /** 怪物最近一次攻击/爆炸的游戏刻（攻击动作期间停步不前进）。 */
+    private final Map<java.util.UUID, Long> mobLastAttack = new java.util.HashMap<>();
     /** 游戏结束后的 10 秒缓冲：此窗口内玩家留在场地观战，随后统一清退回大厅。 */
     private List<UUID> pendingEndPlayers;
     private BukkitTask pendingEndTask;
@@ -521,6 +527,8 @@ public final class PvzMode {
         buildSidebar();
         buildBars();
         tickTask = Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 20L, 20L);
+        // 怪物仇恨/移动/攻击每 tick 管控（清目标防拖怪、近战攻击、苦力怕爆炸、向基地推进）
+        monsterTickTask = Bukkit.getScheduler().runTaskTimer(plugin, this::monsterTick, 1L, 1L);
         StringBuilder roster = new StringBuilder();
         for (String id : LANE_IDS) {
             if (!byLane.get(id).isEmpty()) {
@@ -574,6 +582,10 @@ public final class PvzMode {
         if (tickTask != null) {
             tickTask.cancel();
             tickTask = null;
+        }
+        if (monsterTickTask != null) {
+            monsterTickTask.cancel();
+            monsterTickTask = null;
         }
         running = false;
         winnerLane = winner;
@@ -641,6 +653,7 @@ public final class PvzMode {
         shooterCooldowns.clear();
         frozenUntil.clear();
         icicleHits.clear();
+        mobLastAttack.clear();
         for (PvzLane lane : lanes.values()) {
             lane.reset(baseHealth);
         }
@@ -693,6 +706,27 @@ public final class PvzMode {
                 lane.setSpawnTicks(spawnIntervalTicks(waveIndex));
             }
         }
+        refreshSidebar();
+        refreshBars();
+    }
+
+    /**
+     * 怪物每 tick 管控（原本在 20 tick 的 tick() 中，仇恨压制需要每 tick 才能压住原版 AI）。
+     *
+     * <p>规则（需求：怪物不因仇恨追逐玩家，防走位拖怪导致堆叠）：
+     * <ul>
+     *   <li>每 tick 清空怪物仇恨目标，怪物永不追击玩家；</li>
+     *   <li>近战怪：本路存活玩家挡在行进路径（约 2 格）时攻击，攻击动作期间停步
+     *       （{@link #MOB_ATTACK_INTERVAL_TICKS}），挥完继续向基地推进；被攻击也不回头追；</li>
+     *   <li>苦力怕：不追人，路线上靠近玩家（约 3 格）即引爆；</li>
+     *   <li>巨人僵尸：不追人，挥斧攻击自行定身（SLOWNESS 255），平时向基地推进；</li>
+     *   <li>全体始终向本路基地（终点）推进，到达基地按原逻辑消失并扣基地血。</li>
+     * </ul>
+     */
+    private void monsterTick() {
+        if (!running) {
+            return;
+        }
         for (World world : Bukkit.getWorlds()) {
             for (Entity entity : world.getEntities()) {
                 if (!(entity instanceof Mob mob) || !mob.getScoreboardTags().contains(TAG_MONSTER)) {
@@ -713,23 +747,44 @@ public final class PvzMode {
                     }
                     continue;
                 }
-                Player target = nearestPvzPlayer(mob.getLocation(), lane, TARGET_RANGE);
-                if (target != null) {
-                    mob.setTarget(target);
-                } else if (mob.getTarget() != null) {
+                // 永不仇恨追逐玩家：清空原版 AI 自动选择的目标（防引怪拖走堆叠）
+                if (mob.getTarget() != null) {
                     mob.setTarget(null);
                 }
                 if (lane.base() == null) {
                     continue;
                 }
-                mob.getPathfinder().moveTo(lane.base(), 1.0);
+                long now = Bukkit.getCurrentTick();
+                Long lastAttack = mobLastAttack.get(mob.getUniqueId());
+                boolean inAttack = lastAttack != null && now - lastAttack < MOB_ATTACK_INTERVAL_TICKS;
+                if (inAttack) {
+                    // 攻击/爆炸动作期间停步，动作结束后继续推进
+                } else if (mob.getScoreboardTags().contains(MonsterManager.TAG_GIANT)) {
+                    // 巨人：攻击由自身挥斧动画调度（SLOWNESS 255 定身），此处只管推进
+                    if (!mob.getPathfinder().hasPath()) {
+                        mob.getPathfinder().moveTo(lane.base(), 1.0);
+                    }
+                } else if (mob instanceof Creeper creeper
+                        && nearestPvzPlayer(mob.getLocation(), lane, CREEPER_FUSE_RANGE) != null) {
+                    // 苦力怕：路线上靠近玩家即炸（不追人）
+                    mobLastAttack.put(mob.getUniqueId(), now);
+                    creeper.explode();
+                } else {
+                    Player melee = nearestPvzPlayer(mob.getLocation(), lane, MOB_MELEE_RANGE);
+                    if (melee != null) {
+                        // 玩家挡路：攻击（原版近战伤害+挥击动画），攻击瞬间停步
+                        mobLastAttack.put(mob.getUniqueId(), now);
+                        mob.attack(melee);
+                    } else if (!mob.getPathfinder().hasPath()) {
+                        // 无人挡路：始终向基地推进
+                        mob.getPathfinder().moveTo(lane.base(), 1.0);
+                    }
+                }
                 if (mob.getLocation().distanceSquared(lane.base()) <= ARRIVAL_DISTANCE_SQ) {
                     onMobArrived(mob, lane);
                 }
             }
         }
-        refreshSidebar();
-        refreshBars();
     }
 
     private Player nearestPvzPlayer(Location from, PvzLane lane, double range) {
@@ -848,6 +903,15 @@ public final class PvzMode {
         return stack != null && stack.hasItemMeta()
                 && stack.getItemMeta().getPersistentDataContainer()
                         .has(shooterKey, PersistentDataType.STRING);
+    }
+
+    /** 读取武器射击类型（machine/ice/dual/sniper）；非 PVZ 武器返回 null。 */
+    public String shooterKind(ItemStack stack) {
+        if (stack == null || !stack.hasItemMeta()) {
+            return null;
+        }
+        return stack.getItemMeta().getPersistentDataContainer()
+                .get(shooterKey, PersistentDataType.STRING);
     }
 
     /** 是否为 PVZ 子弹（带 PVZ 子弹标记的投射物）。 */

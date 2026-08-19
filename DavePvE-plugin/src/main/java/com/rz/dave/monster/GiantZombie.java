@@ -80,6 +80,7 @@ public final class GiantZombie extends Monster {
             z.setCustomNameVisible(true);
             z.addScoreboardTag(MonsterManager.TAG_MONSTER);
             z.addScoreboardTag(MonsterManager.TAG_SUMMON);
+            z.addScoreboardTag(MonsterManager.TAG_GIANT);
             z.setRemoveWhenFarAway(false);
             z.setPersistent(true);
             z.getPersistentDataContainer().set(context.laneKey(), PersistentDataType.STRING,

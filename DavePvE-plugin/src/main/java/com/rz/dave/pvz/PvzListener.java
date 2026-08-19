@@ -158,11 +158,19 @@ public final class PvzListener implements Listener {
         }
     }
 
-    /** PVZ 玩家不得交换主副手，职业武器保持固定。 */
+    /** PVZ 玩家按 F（交换副手键）：一律不真交换主副手（职业武器保持固定）；
+     *  狙击豌豆将 F 作为开火扳机（无条件开火，误触由 7 秒冷却兜底）。
+     *  狙击右键不在此处理，交给客户端望远镜缩放辅助瞄准。 */
     @EventHandler(ignoreCancelled = true)
     public void onSwapHands(PlayerSwapHandItemsEvent event) {
-        if (pvz.isPlaying(event.getPlayer())) {
-            event.setCancelled(true);
+        Player player = event.getPlayer();
+        if (!pvz.isPlaying(player)) {
+            return;
+        }
+        ItemStack main = player.getInventory().getItemInMainHand();
+        event.setCancelled(true);   // 禁止真切换副手
+        if ("sniper".equals(pvz.shooterKind(main))) {
+            pvz.fireShooter(player);
         }
     }
 

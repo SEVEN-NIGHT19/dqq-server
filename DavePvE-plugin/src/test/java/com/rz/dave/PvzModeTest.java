@@ -217,6 +217,9 @@ class PvzModeTest {
         assertEquals(25.0, PvzMode.BLIND_BOX_HEALTH, 1e-9, "盲盒僵尸血量固定 25");
         assertEquals(5, PvzMode.MACHINE_BURST_COUNT, "机枪射手 5 连发");
         assertEquals(7000L, PvzMode.SNIPER_COOLDOWN_MS, "狙击豌豆冷却 7 秒");
+        assertEquals(40.0, PvzMode.SNIPER_BULLET_DAMAGE, 1e-9, "狙击豌豆普通怪伤害 40");
+        assertEquals(2.0, PvzMode.MOB_MELEE_RANGE, 1e-9, "近战判定 2 格");
+        assertTrue(com.rz.dave.monster.MonsterManager.MOVEMENT_SPEED_MULTIPLIER == 0.7);
     }
 
     @Test

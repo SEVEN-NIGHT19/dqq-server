@@ -36,6 +36,8 @@ public final class MonsterManager {
     public static final String TAG_SUMMON = "pvz_summon";
     /** 戴盔甲怪物的标签（路障/铁桶僵尸）：血量降到阈值后破甲（摘帽）。 */
     public static final String TAG_ARMORED = "pvz_armored";
+    /** 巨人僵尸标签：攻击由自身挥斧动画调度，通用怪物 AI 只负责向基地推进。 */
+    public static final String TAG_GIANT = "pvz_giant";
     /**
      * 三类防具标签（铁门僵尸/梯子僵尸的盾牌类手持防具，当前版本尚未使用）：
      * 狙击豌豆无视二类/三类防具直接攻击本体。
