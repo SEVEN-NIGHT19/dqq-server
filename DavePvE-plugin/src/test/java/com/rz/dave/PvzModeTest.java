@@ -85,12 +85,10 @@ class PvzModeTest {
     }
 
     @Test
-    void randomClassIsAlwaysOneOfFive() {
-        for (int i = 0; i < 200; i++) {
-            PvzClass clazz = PvzClass.random();
-            assertTrue(clazz == PvzClass.MACHINE_GUNNER || clazz == PvzClass.ICE_SHOOTER
-                    || clazz == PvzClass.WALLNUT || clazz == PvzClass.SNIPER
-                    || clazz == PvzClass.DUAL_SHOOTER);
+    void randomClassIsAlwaysFromPool() {
+        java.util.EnumSet<PvzClass> pool = java.util.EnumSet.allOf(PvzClass.class);
+        for (int i = 0; i < 300; i++) {
+            assertTrue(pool.contains(PvzClass.random()), "随机职业必须来自职业池");
         }
     }
 
@@ -101,7 +99,9 @@ class PvzModeTest {
         assertEquals(PvzClass.WALLNUT, PvzClass.fromRandomIndex(2));
         assertEquals(PvzClass.SNIPER, PvzClass.fromRandomIndex(3));
         assertEquals(PvzClass.DUAL_SHOOTER, PvzClass.fromRandomIndex(4));
-        assertEquals(PvzClass.MACHINE_GUNNER, PvzClass.fromRandomIndex(5));
+        assertEquals(PvzClass.SMALL_PUFF, PvzClass.fromRandomIndex(5));
+        assertEquals(PvzClass.SEA_MUSHROOM, PvzClass.fromRandomIndex(6));
+        assertEquals(PvzClass.MACHINE_GUNNER, PvzClass.fromRandomIndex(7));
     }
 
     @Test
@@ -130,17 +130,49 @@ class PvzModeTest {
 
     @Test
     void randomClassDistributionIsUniform() {
-        // 独立同分布验证：9000 次采样，5 个职业每个占比应接近 1/5（阈值取 ±5% 防抖动）
+        // 独立同分布验证：12000 次采样，7 个职业每个占比应接近 1/7（阈值取 ±5% 防抖动）
         int[] counts = new int[PvzClass.values().length];
-        int n = 9000;
+        int n = 12000;
         for (int i = 0; i < n; i++) {
             counts[PvzClass.random().ordinal()]++;
         }
         for (int count : counts) {
             double ratio = (double) count / n;
-            assertTrue(ratio > 0.15 && ratio < 0.25,
-                    "职业分布应接近 1/5，实际 " + ratio);
+            assertTrue(ratio > 0.10 && ratio < 0.20,
+                    "职业分布应接近 1/7，实际 " + ratio);
         }
+    }
+
+    @Test
+    void puffTierTiers() {
+        // 黄心档位：0→1；0-40→2；40-80→3；80-120→4；120-160→5
+        assertEquals(1, PvzMode.puffTier(0.0), "0 黄心 1 发");
+        assertEquals(2, PvzMode.puffTier(40.0), "40 黄心 2 发");
+        assertEquals(3, PvzMode.puffTier(48.0), "48 黄心 3 发");
+        assertEquals(3, PvzMode.puffTier(80.0), "80 黄心 3 发");
+        assertEquals(4, PvzMode.puffTier(120.0), "120 黄心 4 发");
+        assertEquals(5, PvzMode.puffTier(160.0), "160 黄心 5 发");
+    }
+
+    @Test
+    void puffClassesKitsAndArmor() {
+        ItemStack small = PvzClass.SMALL_PUFF.createKit()[0];
+        assertEquals(Material.BROWN_MUSHROOM, small.getType(), "小喷菇武器为棕色蘑菇（大模式同款）");
+        ItemStack sea = PvzClass.SEA_MUSHROOM.createKit()[0];
+        assertEquals(Material.WARPED_FUNGUS, sea.getType(), "海蘑菇武器为诡异菌");
+        org.bukkit.inventory.meta.LeatherArmorMeta smallChest = (org.bukkit.inventory.meta.LeatherArmorMeta)
+                PvzClass.SMALL_PUFF.createArmor()[2].getItemMeta();
+        org.bukkit.inventory.meta.LeatherArmorMeta smallLegs = (org.bukkit.inventory.meta.LeatherArmorMeta)
+                PvzClass.SMALL_PUFF.createArmor()[1].getItemMeta();
+        assertEquals(org.bukkit.Color.fromRGB(0x8E44AD), smallChest.getColor(), "小喷菇胸甲应为紫色");
+        assertEquals(org.bukkit.Color.WHITE, smallLegs.getColor(), "小喷菇护腿应为白色");
+        org.bukkit.inventory.meta.LeatherArmorMeta seaChest = (org.bukkit.inventory.meta.LeatherArmorMeta)
+                PvzClass.SEA_MUSHROOM.createArmor()[2].getItemMeta();
+        org.bukkit.inventory.meta.LeatherArmorMeta seaBoots = (org.bukkit.inventory.meta.LeatherArmorMeta)
+                PvzClass.SEA_MUSHROOM.createArmor()[0].getItemMeta();
+        assertEquals(org.bukkit.Color.fromRGB(0x1B5E20), seaChest.getColor(), "海蘑菇胸甲应为深绿色");
+        assertEquals(org.bukkit.Color.BLACK, seaBoots.getColor(), "海蘑菇鞋子应为黑色");
+        assertEquals(7, PvzClass.values().length, "职业池 7 个");
     }
 
     @Test

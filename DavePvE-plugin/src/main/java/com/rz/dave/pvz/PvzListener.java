@@ -236,7 +236,9 @@ public final class PvzListener implements Listener {
             return;
         }
         ItemStack held = player.getInventory().getItemInMainHand();
-        if (held.getType() == org.bukkit.Material.DISPENSER && pvz.isShooterWeapon(held)) {
+        // 所有 PVZ 职业武器右键发射（发射器/狙击除外——狙击右键保留客户端望远镜缩放）；
+        // 灰褐色蘑菇/诡异菌本就不可放置，直接取消方块交互并发射。
+        if (pvz.isShooterWeapon(held) && !"sniper".equals(pvz.shooterKind(held))) {
             event.setCancelled(true);   // 武器不可用于与方块交互
             pvz.fireShooter(player);
         }

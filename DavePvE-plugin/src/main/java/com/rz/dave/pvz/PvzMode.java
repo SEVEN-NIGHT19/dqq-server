@@ -152,6 +152,23 @@ public final class PvzMode {
     public static final double DRAGON_DAMAGE = 7.0;           // 幽蓝火焰豌豆：龙息弹（减速同冰豆）
     public static final double DRAGON_SPLASH = 3.0;
     public static final double DRAGON_ARMOR_BONUS = 7.0;
+
+    // ---- 小喷菇 / 海蘑菇（喷菇体系）----
+    public static final double PUFF_DAMAGE = 2.0;             // 每发子弹伤害 2
+    public static final double SMALL_PUFF_RANGE = 10.0;       // 小喷菇子弹射程 10 格
+    public static final double SEA_MUSHROOM_RANGE = 14.0;     // 海蘑菇子弹射程 14 格
+    public static final double SMALL_PUFF_SCALE = 0.7;        // 小喷菇体型 0.7 倍
+    public static final double SEA_MUSHROOM_SCALE = 0.5;      // 海蘑菇体型 0.5 倍
+    public static final long PUFF_BURST_INTERVAL_TICKS = 2;   // 海蘑菇每轮内 2 连发的间隔
+    /** 黄心映射：原版黄心（吸收值）上限 20 点（10 颗），1 颗 = ABSORPTION_SCALE 点虚拟黄心。
+     *  小喷菇上限 160 虚拟 = 10 颗满；海蘑菇上限 120 虚拟 = 7.5 颗。 */
+    public static final double ABSORPTION_SCALE = 16.0;
+    public static final double PUFF_HEARTS_PER_PULSE = 40.0;  // 每次脉冲 +40 虚拟黄心
+    public static final long SMALL_PUFF_PULSE_TICKS = 800L;   // 小喷菇每 40 秒一次脉冲
+    public static final long SEA_MUSHROOM_PULSE_TICKS = 3200L;// 海蘑菇每 160 秒一次脉冲
+    public static final double SMALL_PUFF_ABSORPTION_CAP = 10.0;  // 160 虚拟 = 10 颗黄心
+    public static final double SEA_MUSHROOM_ABSORPTION_CAP = 7.5; // 120 虚拟 = 7.5 颗黄心
+    public static final double PUFF_SCATTER_DEG = 4.0;        // 散射幅度（±4°，尽量小、对准视线）
     public static final int DISPLAY_BULLET_MAX_TICKS = 100;   // 方块子弹（玻璃弹）最长飞行 5 秒
 
     private final NamespacedKey shooterKey;      // 武器标记（string: machine/ice）
@@ -175,6 +192,8 @@ public final class PvzMode {
     private long waveStartedTick;
     private BukkitTask tickTask;
     private BukkitTask monsterTickTask;
+    /** 喷菇职业的加黄心脉冲任务（按玩家独立：同职业多人互不影响）。 */
+    private final java.util.Map<java.util.UUID, BukkitTask> puffPulseTasks = new java.util.HashMap<>();
     /** 游戏结束后的 10 秒缓冲：此窗口内玩家留在场地观战，随后统一清退回大厅。 */
     private List<UUID> pendingEndPlayers;
     private BukkitTask pendingEndTask;
@@ -483,14 +502,18 @@ public final class PvzMode {
                 manager.setPvzPlayer(p.getUniqueId(), true);
                 p.getInventory().clear();
                 p.getEnderChest().clear();
-                // 职业数值：默认 40 点血；坚果 120 点血 + 1.5 倍体型
+                // 职业数值：默认 40 点血；坚果 120 点血 + 1.5 倍体型；小喷菇 0.7 倍、海蘑菇 0.5 倍
                 boolean wallnut = clazz == PvzClass.WALLNUT;
                 p.setMaxHealth(wallnut ? WALLNUT_HEALTH : PLAYER_BASE_HEALTH);
                 p.setHealth(p.getMaxHealth());
-                if (wallnut) {
+                p.setAbsorptionAmount(0.0);
+                double scale = wallnut ? WALLNUT_SCALE
+                        : clazz == PvzClass.SMALL_PUFF ? SMALL_PUFF_SCALE
+                        : clazz == PvzClass.SEA_MUSHROOM ? SEA_MUSHROOM_SCALE : 1.0;
+                if (scale != 1.0) {
                     AttributeInstance scaleAttr = p.getAttribute(Attribute.SCALE);
                     if (scaleAttr != null) {
-                        scaleAttr.setBaseValue(WALLNUT_SCALE);
+                        scaleAttr.setBaseValue(scale);
                     }
                 }
                 for (ItemStack item : clazz.createKit()) {
@@ -502,6 +525,20 @@ public final class PvzMode {
                 }
                 if (clazz.isShooter()) {
                     markShooterWeapon(p, clazz);
+                }
+                // 喷菇职业：独立脉冲加黄心（40 秒 / 160 秒一次；per-player 互不影响）
+                if (clazz == PvzClass.SMALL_PUFF || clazz == PvzClass.SEA_MUSHROOM) {
+                    final PvzClass puffClass = clazz;
+                    long period = clazz == PvzClass.SMALL_PUFF
+                            ? SMALL_PUFF_PULSE_TICKS : SEA_MUSHROOM_PULSE_TICKS;
+                    BukkitTask task = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
+                        if (!running || !isPlaying(p)
+                                || !puffClass.equals(playerClass.get(p.getUniqueId()))) {
+                            return;
+                        }
+                        givePuffHearts(p, puffClass);
+                    }, period, period);
+                    puffPulseTasks.put(p.getUniqueId(), task);
                 }
                 p.setGameMode(GameMode.ADVENTURE);
                 p.setFoodLevel(20);
@@ -586,6 +623,17 @@ public final class PvzMode {
         }
         running = false;
         winnerLane = winner;
+        // 停止全部喷菇职业脉冲任务并清空黄心（黄心/档位/发射数不跨局残留）
+        for (BukkitTask task : puffPulseTasks.values()) {
+            task.cancel();
+        }
+        puffPulseTasks.clear();
+        for (UUID id : new ArrayList<>(pvzPlayers)) {
+            Player p = Bukkit.getPlayer(id);
+            if (p != null && p.isOnline()) {
+                p.setAbsorptionAmount(0.0);
+            }
+        }
         removeAllPvzMobs();
         removeBars();
         clearSidebar();
@@ -930,6 +978,7 @@ public final class PvzMode {
     private void resolveBulletHit(String kind, Mob mob, double damage, Player shooter) {
         switch (kind) {
             case "machine" -> damagePvzMonster(mob, damage, shooter);
+            case "shrimp", "sea" -> damagePvzMonster(mob, PUFF_DAMAGE, shooter);
             case "ice", "icicle" -> applyIceHit(mob, damage, shooter);
             case "fire_small" -> {
                 damagePvzMonster(mob, FIRE_SMALL_DAMAGE, shooter);
@@ -1038,6 +1087,8 @@ public final class PvzMode {
             case "sniper" -> "狙击豌豆";
             case "dual" -> "双发射手";
             case "ice" -> "寒冰射手";
+            case "shrimp" -> "小喷菇";
+            case "sea" -> "海蘑菇";
             default -> "机枪射手";
         };
         if (remaining > 0) {
@@ -1064,6 +1115,29 @@ public final class PvzMode {
                         // 每发子弹独立 1/7 随机（可能出现两个同种弹）
                         spawnBullet(player, pickDualKind(Math.random()));
                     }, shot * DUAL_BULLET_INTERVAL_TICKS);
+                }
+            }
+            case "shrimp" -> {
+                // 黄心档位（0/40/80/120/160 → 1/2/3/4/5 发），同 tick 小散射齐射对准视线
+                int count = puffTier(player.getAbsorptionAmount() * ABSORPTION_SCALE);
+                for (int i = 0; i < count; i++) {
+                    spawnPuffBullet(player, "shrimp", SMALL_PUFF_RANGE, 0.0, true);
+                }
+            }
+            case "sea" -> {
+                // 黄心档位（0/40/80/120 → 1/2/3/4 轮），每轮连续 2 发，轮与轮小角度错开
+                int rounds = puffTier(Math.min(
+                        player.getAbsorptionAmount() * ABSORPTION_SCALE, 120.0));
+                for (int r = 0; r < rounds; r++) {
+                    final double yawOffset = (r - (rounds - 1) / 2.0) * PUFF_SCATTER_DEG;
+                    for (int b = 0; b < 2; b++) {
+                        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                            if (!player.isOnline() || !isPlaying(player)) {
+                                return;
+                            }
+                            spawnPuffBullet(player, "sea", SEA_MUSHROOM_RANGE, yawOffset, false);
+                        }, r * 2L + b * PUFF_BURST_INTERVAL_TICKS);
+                    }
                 }
             }
             case "ice" -> {
@@ -1116,6 +1190,58 @@ public final class PvzMode {
             return "ice_fire";
         }
         return "dragon";
+    }
+
+    /** 喷菇体系子弹（小喷菇/海蘑菇共用）：紫色玻璃雪球弹，纯伤害无凋零，带射程。
+     *  @param yawOffsetDeg 相对视线的固定水平偏移（海蘑菇轮间错开；小喷菇传 0）
+     *  @param randomSpread 是否每发随机小散射（小喷菇档位齐射用） */
+    private void spawnPuffBullet(Player player, String kind, double range,
+                                 double yawOffsetDeg, boolean randomSpread) {
+        Location eye = player.getEyeLocation();
+        org.bukkit.util.Vector dir = player.getLocation().getDirection().clone().normalize();
+        double extra = randomSpread ? (Math.random() - 0.5) * 2.0 * PUFF_SCATTER_DEG : 0.0;
+        final org.bukkit.util.Vector shotDir = dir.rotateAroundY(Math.toRadians(yawOffsetDeg + extra)).normalize();
+        Location origin = eye.clone();
+        Snowball ball = eye.getWorld().spawn(eye, Snowball.class, s -> {
+            s.setItem(new ItemStack(Material.PURPLE_STAINED_GLASS));
+            s.setVelocity(shotDir.clone().multiply(SHOOTER_BULLET_SPEED));
+            s.setShooter(player);
+            s.setGravity(false);
+            markBullet(s, kind, PUFF_DAMAGE, player);
+        });
+        trackPuffRange(ball, origin, range);
+    }
+
+    /** 子弹射程：每 tick 检查，超程直接移除（命中结算因此天然失效）。 */
+    private void trackPuffRange(Snowball ball, Location origin, double range) {
+        double rangeSq = range * range;
+        Bukkit.getScheduler().runTaskTimer(plugin, task -> {
+            if (!ball.isValid() || ball.isDead()) {
+                task.cancel();
+                return;
+            }
+            if (ball.getLocation().distanceSquared(origin) >= rangeSq) {
+                ball.remove();
+                task.cancel();
+            }
+        }, 1L, 1L);
+    }
+
+    /** 脉冲加黄心：每次 +40 虚拟黄心，不超过职业上限（小喷菇 160 / 海蘑菇 120 虚拟）。 */
+    private void givePuffHearts(Player p, PvzClass clazz) {
+        double cap = clazz == PvzClass.SMALL_PUFF
+                ? SMALL_PUFF_ABSORPTION_CAP : SEA_MUSHROOM_ABSORPTION_CAP;
+        double next = Math.min(cap, p.getAbsorptionAmount() + PUFF_HEARTS_PER_PULSE / ABSORPTION_SCALE);
+        p.setAbsorptionAmount(Math.max(0.0, next));
+    }
+
+    /** 黄心虚拟值 → 发射档位（次数/轮数）：
+     *  0 及以下 → 1；0–40 → 2；40–80 → 3；80–120 → 4；120–160 → 5。纯逻辑可单测。 */
+    public static int puffTier(double virtualHearts) {
+        if (virtualHearts <= 0.0) {
+            return 1;
+        }
+        return (int) Math.ceil(virtualHearts / 40.0) + 1;
     }
 
     /** 发射 PVZ 子弹（按类型生成对应实体与模型）。 */
@@ -1266,12 +1392,14 @@ public final class PvzMode {
         }
     }
 
-    /** 开局为射手职业的武器打上射击标记（机枪/寒冰/狙击/双发）。 */
+    /** 开局为射手职业的武器打上射击标记（机枪/寒冰/狙击/双发/小喷菇/海蘑菇）。 */
     private void markShooterWeapon(Player player, PvzClass clazz) {
         String kind = switch (clazz) {
             case ICE_SHOOTER -> "ice";
             case SNIPER -> "sniper";
             case DUAL_SHOOTER -> "dual";
+            case SMALL_PUFF -> "shrimp";
+            case SEA_MUSHROOM -> "sea";
             default -> "machine";
         };
         for (ItemStack item : player.getInventory().getContents()) {
@@ -1279,7 +1407,8 @@ public final class PvzMode {
                 continue;
             }
             Material type = item.getType();
-            if (type == Material.DISPENSER || type == Material.SPYGLASS) {
+            if (type == Material.DISPENSER || type == Material.SPYGLASS
+                    || type == Material.BROWN_MUSHROOM || type == Material.WARPED_FUNGUS) {
                 item.editMeta(meta -> meta.getPersistentDataContainer().set(
                         shooterKey, PersistentDataType.STRING, kind));
             }
@@ -1442,7 +1571,13 @@ public final class PvzMode {
         shooterCooldowns.remove(player.getUniqueId());
         player.getInventory().clear();
         player.getEnderChest().clear();
-        // 恢复玩家常规数值：血量 20、体型 1.0（坚果 1.5 倍体型必须还原）
+        // 停止该玩家的喷菇脉冲任务（若有）并清空黄心
+        BukkitTask puffTask = puffPulseTasks.remove(player.getUniqueId());
+        if (puffTask != null) {
+            puffTask.cancel();
+        }
+        player.setAbsorptionAmount(0.0);
+        // 恢复玩家常规数值：血量 20、体型 1.0（坚果 1.5 倍/喷菇缩小体型必须还原）
         player.setMaxHealth(20.0);
         player.setHealth(20.0);
         AttributeInstance scale = player.getAttribute(Attribute.SCALE);

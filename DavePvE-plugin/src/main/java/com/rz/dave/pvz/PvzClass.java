@@ -21,7 +21,9 @@ public enum PvzClass {
     ICE_SHOOTER("寒冰射手", PvzClassArmor.LIGHT_BLUE),
     WALLNUT("坚果", PvzClassArmor.BROWN),
     SNIPER("狙击豌豆", PvzClassArmor.LIME_BLACK_HAT),
-    DUAL_SHOOTER("双发射手", PvzClassArmor.PALE_GREEN_DARK_HAT);
+    DUAL_SHOOTER("双发射手", PvzClassArmor.PALE_GREEN_DARK_HAT),
+    SMALL_PUFF("小喷菇", PvzClassArmor.PURPLE_WHITE_LIMBS),
+    SEA_MUSHROOM("海蘑菇", PvzClassArmor.DARK_GREEN_BLACK_LIMBS);
 
     private final String display;
     private final PvzClassArmor armor;
@@ -64,7 +66,12 @@ public enum PvzClass {
         if (this == WALLNUT) {
             return new ItemStack[0];
         }
-        Material base = this == SNIPER ? Material.SPYGLASS : Material.DISPENSER;
+        Material base = switch (this) {
+            case SNIPER -> Material.SPYGLASS;
+            case SMALL_PUFF -> Material.BROWN_MUSHROOM;
+            case SEA_MUSHROOM -> Material.WARPED_FUNGUS;
+            default -> Material.DISPENSER;
+        };
         ItemStack main = new ItemStack(base);
         ItemMeta meta = main.getItemMeta();
         meta.setItemName(ChatColor.AQUA + display);
@@ -73,12 +80,12 @@ public enum PvzClass {
         return new ItemStack[]{main};
     }
 
-    /** 该职业的护甲（对应颜色染色皮革套，无限耐久；头盔色可独立覆写）。 */
+    /** 该职业的护甲（对应颜色染色皮革套，无限耐久；头盔/护腿/鞋子色可独立覆写）。 */
     public ItemStack[] createArmor() {
         ItemStack helmet = dyed(Material.LEATHER_HELMET, armor.helmet != null ? armor.helmet : armor.color);
         ItemStack chest = dyed(Material.LEATHER_CHESTPLATE, armor.color);
-        ItemStack legs = dyed(Material.LEATHER_LEGGINGS, armor.color);
-        ItemStack boots = dyed(Material.LEATHER_BOOTS, armor.color);
+        ItemStack legs = dyed(Material.LEATHER_LEGGINGS, armor.legs != null ? armor.legs : armor.color);
+        ItemStack boots = dyed(Material.LEATHER_BOOTS, armor.boots != null ? armor.boots : armor.color);
         return new ItemStack[]{boots, legs, chest, helmet};
     }
 
@@ -91,20 +98,28 @@ public enum PvzClass {
         return stack;
     }
 
-    /** 各职业护甲染色（头盔可单独配色；null 表示与套装同色）。 */
+    /** 各职业护甲染色（头盔/护腿/鞋子可单独配色；null 表示与套装同色）。 */
     private enum PvzClassArmor {
-        LIME(Color.fromRGB(0x7FCC19), null),                 // 机枪：浅绿
-        LIGHT_BLUE(Color.fromRGB(0x3AB3DA), null),           // 寒冰：浅蓝
-        BROWN(Color.fromRGB(0x835432), null),                // 坚果：棕
-        LIME_BLACK_HAT(Color.fromRGB(0x7FCC19), Color.fromRGB(0x000000)),  // 狙击：浅绿套 + 黑帽
-        PALE_GREEN_DARK_HAT(Color.fromRGB(0x9FE22E), Color.fromRGB(0x1E7F1E)); // 双发：淡绿套 + 深绿帽
+        LIME(Color.fromRGB(0x7FCC19), null, null, null),                 // 机枪：浅绿
+        LIGHT_BLUE(Color.fromRGB(0x3AB3DA), null, null, null),           // 寒冰：浅蓝
+        BROWN(Color.fromRGB(0x835432), null, null, null),                // 坚果：棕
+        LIME_BLACK_HAT(Color.fromRGB(0x7FCC19), Color.fromRGB(0x000000), null, null),  // 狙击：浅绿套 + 黑帽
+        PALE_GREEN_DARK_HAT(Color.fromRGB(0x9FE22E), Color.fromRGB(0x1E7F1E), null, null), // 双发：淡绿套 + 深绿帽
+        PURPLE_WHITE_LIMBS(Color.fromRGB(0x8E44AD), null,
+                Color.fromRGB(0xFFFFFF), Color.fromRGB(0xFFFFFF)),        // 小喷菇：紫帽胸 + 白腿鞋
+        DARK_GREEN_BLACK_LIMBS(Color.fromRGB(0x1B5E20), null,
+                Color.fromRGB(0x000000), Color.fromRGB(0x000000));        // 海蘑菇：深绿帽胸 + 黑腿鞋
 
         private final Color color;
         private final Color helmet;
+        private final Color legs;
+        private final Color boots;
 
-        PvzClassArmor(Color color, Color helmet) {
+        PvzClassArmor(Color color, Color helmet, Color legs, Color boots) {
             this.color = color;
             this.helmet = helmet;
+            this.legs = legs;
+            this.boots = boots;
         }
     }
 }
