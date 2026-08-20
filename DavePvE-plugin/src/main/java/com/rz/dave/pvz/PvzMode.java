@@ -989,7 +989,9 @@ public final class PvzMode {
         switch (kind) {
             case "machine" -> damagePvzMonster(mob, damage, shooter);
             case "shrimp", "sea" -> damagePvzMonster(mob, PUFF_DAMAGE, shooter);
-            case "ice", "icicle" -> applyIceHit(mob, damage, shooter);
+            // 冰豆永远只造成基础 2 点伤害（效果只有减速/冻结）；冻结附加伤害只属于冰棱
+            case "ice" -> applyIceHit(mob, damage, shooter, false);
+            case "icicle" -> applyIceHit(mob, damage, shooter, true);
             case "fire_small" -> {
                 damagePvzMonster(mob, FIRE_SMALL_DAMAGE, shooter);
                 splashAround(mob, FIRE_SMALL_SPLASH, shooter);
@@ -1006,12 +1008,12 @@ public final class PvzMode {
             }
             case "ice_fire" -> {
                 applyIceHit(mob, ICEFIRE_DAMAGE
-                        + (hasArmorDefense(mob) ? ICEFIRE_ARMOR_BONUS : 0.0), shooter);
+                        + (hasArmorDefense(mob) ? ICEFIRE_ARMOR_BONUS : 0.0), shooter, true);
                 splashAround(mob, ICEFIRE_SPLASH, shooter);
             }
             case "dragon" -> {
                 applyIceHit(mob, DRAGON_DAMAGE
-                        + (hasArmorDefense(mob) ? DRAGON_ARMOR_BONUS : 0.0), shooter);
+                        + (hasArmorDefense(mob) ? DRAGON_ARMOR_BONUS : 0.0), shooter, true);
                 splashAround(mob, DRAGON_SPLASH, shooter);
             }
             case "sniper" -> damagePvzMonster(mob,
@@ -1041,16 +1043,17 @@ public final class PvzMode {
     }
 
     /**
-     * 寒冰命中结算：无缓慢 → 施加 10 秒缓慢三；已有缓慢三 → 冻结 1.8 秒 + 额外 2 伤害；
-     * 正在冻结 → 重置冻结 1.8 秒（不叠加）+ 额外 4 伤害。
+     * 寒冰命中结算：无缓慢 → 施加 10 秒缓慢三；已有缓慢三 → 冻结 1.8 秒；正在冻结 → 重置冻结 1.8 秒。
+     * 伤害 = 基础伤害（固定）；withBonus=true（冰棱/冰火/龙息）时冻结才附带额外伤害：
+     * 已有缓慢 → 冻结 +2；正在冻结 → 重置 +4。冰豆本身永远只有基础伤害。
      */
-    private void applyIceHit(Mob mob, double damage, Player shooter) {
+    private void applyIceHit(Mob mob, double damage, Player shooter, boolean withBonus) {
         if (isFrozen(mob)) {
             freeze(mob);
-            damagePvzMonster(mob, damage + ICE_FROZEN_BONUS, shooter);
+            damagePvzMonster(mob, damage + (withBonus ? ICE_FROZEN_BONUS : 0.0), shooter);
         } else if (mob.hasPotionEffect(PotionEffectType.SLOWNESS)) {
             freeze(mob);
-            damagePvzMonster(mob, damage + ICE_FREEZE_BONUS, shooter);
+            damagePvzMonster(mob, damage + (withBonus ? ICE_FREEZE_BONUS : 0.0), shooter);
         } else {
             mob.addPotionEffect(new PotionEffect(
                     PotionEffectType.SLOWNESS, ICE_SLOW_DURATION, ICE_SLOW_AMPLIFIER));
@@ -1245,6 +1248,8 @@ public final class PvzMode {
         double cur = p.getAbsorptionAmount();
         double next = Math.min(cap, cur + PUFF_HEARTS_PER_PULSE / ABSORPTION_SCALE);
         p.setAbsorptionAmount(Math.max(0.0, next));
+        plugin.getLogger().info("[PVZ黄心] " + p.getName() + " " + clazz.name()
+                + " 脉冲: 吸收 " + cur + " -> " + next + " / 上限 " + cap);
         p.sendActionBar(ChatColor.YELLOW + "【" + clazz.displayName() + "】黄心 +40（当前 "
                 + (int) Math.round(next * ABSORPTION_SCALE) + " / " + (int) Math.round(cap * ABSORPTION_SCALE) + "）");
     }
