@@ -163,6 +163,16 @@ public final class DaveAdminCommand implements CommandExecutor, TabCompleter {
                     case "status":
                         sender.sendMessage(pvz.statusSummary());
                         return true;
+                    case "forceclass": {
+                        if (args.length < 3) {
+                            sender.sendMessage(org.bukkit.ChatColor.GOLD
+                                    + "用法: /davepve pvz forceclass <玩家> <职业|random>");
+                        } else {
+                            String className = args.length >= 4 ? args[3] : null;
+                            sender.sendMessage(pvz.forceClass(args[2], className));
+                        }
+                        break;
+                    }
                     case "setspawn":
                     case "setbase":
                     case "setplayer": {

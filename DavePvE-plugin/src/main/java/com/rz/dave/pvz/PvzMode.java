@@ -117,6 +117,7 @@ public final class PvzMode {
     public static final double WALLNUT_SCALE = 1.5;           // 坚果体型倍数（结束恢复 1.0）
     public static final long SHOOTER_COOLDOWN_MS = 1400L;     // 射手攻击冷却 1.4 秒
     public static final double SHOOTER_BULLET_DAMAGE = 2.0;   // 每发子弹伤害
+    public static final double ICE_BULLET_DAMAGE = 2.0;       // 冰豆每发基础伤害（寒冰射手/双发射手 ice）
     public static final double SHOOTER_BULLET_SPEED = 1.8;    // 子弹基础速度
     public static final int MACHINE_BURST_COUNT = 5;          // 机枪射手一次连发数（4→5）
     public static final int ICE_BURST_COUNT = 2;              // 寒冰射手一次连发数
@@ -194,6 +195,8 @@ public final class PvzMode {
     private BukkitTask monsterTickTask;
     /** 喷菇职业的加黄心脉冲任务（按玩家独立：同职业多人互不影响）。 */
     private final java.util.Map<java.util.UUID, BukkitTask> puffPulseTasks = new java.util.HashMap<>();
+    /** OP 指定的下局职业（per-player；下一局开局使用后即消耗，方便针对性测试职业）。 */
+    private final java.util.Map<java.util.UUID, PvzClass> forcedClasses = new java.util.HashMap<>();
     /** 游戏结束后的 10 秒缓冲：此窗口内玩家留在场地观战，随后统一清退回大厅。 */
     private List<UUID> pendingEndPlayers;
     private BukkitTask pendingEndTask;
@@ -495,7 +498,10 @@ public final class PvzMode {
             lane.reset(baseHealth);
             lane.setAlivePlayers(e.getValue().size());
             for (Player p : e.getValue()) {
-                PvzClass clazz = PvzClass.random();
+                PvzClass clazz = forcedClasses.remove(p.getUniqueId());
+                if (clazz == null) {
+                    clazz = PvzClass.random();
+                }
                 playerClass.put(p.getUniqueId(), clazz);
                 playerLane.put(p.getUniqueId(), lane.id());
                 pvzPlayers.add(p.getUniqueId());
@@ -531,6 +537,10 @@ public final class PvzMode {
                     final PvzClass puffClass = clazz;
                     long period = clazz == PvzClass.SMALL_PUFF
                             ? SMALL_PUFF_PULSE_TICKS : SEA_MUSHROOM_PULSE_TICKS;
+                    BukkitTask existing = puffPulseTasks.remove(p.getUniqueId());
+                    if (existing != null) {
+                        existing.cancel();
+                    }
                     BukkitTask task = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
                         if (!running || !isPlaying(p)
                                 || !puffClass.equals(playerClass.get(p.getUniqueId()))) {
@@ -1227,12 +1237,16 @@ public final class PvzMode {
         }, 1L, 1L);
     }
 
-    /** 脉冲加黄心：每次 +40 虚拟黄心，不超过职业上限（小喷菇 160 / 海蘑菇 120 虚拟）。 */
+    /** 脉冲加黄心：每次 +40 虚拟黄心，不超过职业上限（小喷菇 160 / 海蘑菇 120 虚拟）。
+     *  附屏幕提示便于实测确认脉冲在运行。 */
     private void givePuffHearts(Player p, PvzClass clazz) {
         double cap = clazz == PvzClass.SMALL_PUFF
                 ? SMALL_PUFF_ABSORPTION_CAP : SEA_MUSHROOM_ABSORPTION_CAP;
-        double next = Math.min(cap, p.getAbsorptionAmount() + PUFF_HEARTS_PER_PULSE / ABSORPTION_SCALE);
+        double cur = p.getAbsorptionAmount();
+        double next = Math.min(cap, cur + PUFF_HEARTS_PER_PULSE / ABSORPTION_SCALE);
         p.setAbsorptionAmount(Math.max(0.0, next));
+        p.sendActionBar(ChatColor.YELLOW + "【" + clazz.displayName() + "】黄心 +40（当前 "
+                + (int) Math.round(next * ABSORPTION_SCALE) + " / " + (int) Math.round(cap * ABSORPTION_SCALE) + "）");
     }
 
     /** 黄心虚拟值 → 发射档位（次数/轮数）：
@@ -1287,7 +1301,7 @@ public final class PvzMode {
                 s.setVelocity(dir.multiply(SHOOTER_BULLET_SPEED));
                 s.setShooter(player);
                 s.setGravity(false);
-                markBullet(s, kind, SHOOTER_BULLET_DAMAGE, player);
+                markBullet(s, kind, ICE_BULLET_DAMAGE, player);
             });
             default -> eye.getWorld().spawn(eye, Snowball.class, s -> {
                 s.setItem(new ItemStack(Material.SLIME_BALL));
@@ -1601,6 +1615,51 @@ public final class PvzMode {
                 }
             }
         }
+    }
+
+    // ---------------------------------------------------------------- 强制职业（OP 指定下局职业）
+
+    /** 解析职业名：支持英文枚举名与中文显示名；null/random/随机 表示清除强制。纯逻辑可单测。 */
+    public static PvzClass parsePvzClass(String className) {
+        if (className == null || className.equalsIgnoreCase("random")
+                || className.equalsIgnoreCase("随机")) {
+            return null;
+        }
+        for (PvzClass c : PvzClass.values()) {
+            if (c.name().equalsIgnoreCase(className) || c.displayName().equals(className)) {
+                return c;
+            }
+        }
+        return null;
+    }
+
+    /** OP 指令：指定某玩家下次开局时的职业（下局使用后即消耗，方便针对性测试职业）。
+     *  @return 反馈消息 */
+    public String forceClass(String playerName, String className) {
+        Player target = Bukkit.getPlayerExact(playerName);
+        if (target == null) {
+            return ChatColor.RED + "【PVZ】未找到在线玩家 " + playerName;
+        }
+        PvzClass clazz = parsePvzClass(className);
+        if (className != null && !className.equalsIgnoreCase("random")
+                && !className.equalsIgnoreCase("随机") && clazz == null) {
+            StringBuilder names = new StringBuilder();
+            for (PvzClass c : PvzClass.values()) {
+                if (names.length() > 0) {
+                    names.append('、');
+                }
+                names.append(c.displayName());
+            }
+            return ChatColor.RED + "【PVZ】未知职业 " + className + "，可选：" + names
+                    + "（或 random 恢复随机）";
+        }
+        if (clazz == null) {
+            forcedClasses.remove(target.getUniqueId());
+            return ChatColor.GOLD + "【PVZ】已清除 " + target.getName() + " 的下局职业指定（恢复随机）";
+        }
+        forcedClasses.put(target.getUniqueId(), clazz);
+        return ChatColor.GOLD + "【PVZ】已指定 " + target.getName() + " 下局职业为【"
+                + clazz.displayName() + "】（下一局开局生效一次）";
     }
 
     // ---------------------------------------------------------------- 显示

@@ -15,6 +15,7 @@ import org.mockbukkit.mockbukkit.ServerMock;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** PVZ 模式纯逻辑测试：职业装备、路状态机、波次数值曲线。 */
@@ -243,6 +244,16 @@ class PvzModeTest {
     }
 
     @Test
+    void forceClassParsing() {
+        assertEquals(PvzClass.SMALL_PUFF, PvzMode.parsePvzClass("SMALL_PUFF"), "英文枚举名");
+        assertEquals(PvzClass.SMALL_PUFF, PvzMode.parsePvzClass("小喷菇"), "中文显示名");
+        assertEquals(PvzClass.SEA_MUSHROOM, PvzMode.parsePvzClass("海蘑菇"), "中文显示名");
+        assertNull(PvzMode.parsePvzClass("random"), "random 表示清除强制");
+        assertNull(PvzMode.parsePvzClass("随机"), "随机表示清除强制");
+        assertNull(PvzMode.parsePvzClass("不存在的职业"), "未知职业返回 null");
+    }
+
+    @Test
     void waveMathScalesMonstersAndSpawns() {
         assertEquals(3, PvzMode.spawnsPerWave(0));
         assertEquals(8, PvzMode.spawnsPerWave(5));
@@ -250,6 +261,9 @@ class PvzModeTest {
         assertEquals(5, PvzMode.MACHINE_BURST_COUNT, "机枪射手 5 连发");
         assertEquals(7000L, PvzMode.SNIPER_COOLDOWN_MS, "狙击豌豆冷却 7 秒");
         assertEquals(40.0, PvzMode.SNIPER_BULLET_DAMAGE, 1e-9, "狙击豌豆普通怪伤害 40");
+        assertEquals(2.0, PvzMode.SHOOTER_BULLET_DAMAGE, 1e-9, "豌豆每发伤害 2");
+        assertEquals(2.0, PvzMode.ICE_BULLET_DAMAGE, 1e-9, "冰豆每发基础伤害 2");
+        assertEquals(1400L, PvzMode.SHOOTER_COOLDOWN_MS, "射手（含双发）冷却 1.4 秒");
         assertEquals(2.0, PvzMode.MOB_MELEE_RANGE, 1e-9, "近战判定 2 格");
         assertEquals(0.75, com.rz.dave.monster.MonsterManager.MOVEMENT_SPEED_MULTIPLIER, 1e-9,
                 "全体怪物移速 0.75 倍");

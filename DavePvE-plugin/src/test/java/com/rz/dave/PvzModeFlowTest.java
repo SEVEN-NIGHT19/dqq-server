@@ -120,6 +120,8 @@ class PvzModeFlowTest {
     void startGameAssignsClassesAndLanes() {
         PlayerMock a = server.addPlayer("P1");
         PlayerMock b = server.addPlayer("P2");
+        // OP 指定 a 下局为小喷菇：开局应强制生效且仅消耗一次
+        pvz.forceClass("P1", "小喷菇");
         pvz.setReady(a, true);
         pvz.setReady(b, true);
         pvz.startGame(server.getConsoleSender());
@@ -129,6 +131,7 @@ class PvzModeFlowTest {
         assertEquals("one", pvz.laneOf(b));
         assertNotNull(pvz.classOf(a));
         assertNotNull(pvz.classOf(b));
+        assertEquals(PvzClass.SMALL_PUFF, pvz.classOf(a), "强制职业下局生效");
         assertTrue(pvz.isPlaying(a) && pvz.isPlaying(b));
         String status = pvz.statusSummary();
         assertTrue(status.contains("1路") && status.contains("存活玩家 2"), status);
